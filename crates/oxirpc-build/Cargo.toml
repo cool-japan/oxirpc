@@ -1,0 +1,80 @@
+[package]
+name = "oxirpc-build"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Build-time proto compiler for OxiRPC — no protoc required"
+keywords = ["grpc", "protobuf", "codegen", "pure-rust", "oxirpc"]
+categories = ["development-tools"]
+
+[features]
+## Re-enable the legacy tonic-prost-build codegen backend.
+##
+## When this feature is active, `Builder::run_codegen` delegates to
+## `tonic_prost_build::compile_fds` instead of the native `ServiceCodegen`.
+## This preserves support for `type_attribute`, `field_attribute`, `btree_map`,
+## `bytes`, `extern_path`, `compile_well_known_types`, and all other prost
+## message-side knobs that the native path does not implement.
+##
+## NOTE: `legacy-tonic-codegen` is NOT included in `default`. Users who
+## relied on tonic-prost-build generating both message types and service stubs
+## should opt in explicitly until a native message generator is wired up.
+legacy-tonic-codegen = ["dep:tonic-prost-build"]
+
+[dependencies]
+tonic-prost-build = { workspace = true, optional = true }
+oxiproto-build    = { workspace = true }
+oxiproto-core     = { workspace = true }
+prost             = { workspace = true }
+prost-types       = { workspace = true }
+# needed to document the generated code's codec type in doc comments / examples
+tonic             = { workspace = true }
+tonic-prost       = { workspace = true }
+
+[dev-dependencies]
+protox         = { workspace = true }
+prost-types    = { workspace = true }
+prost          = { workspace = true }
+criterion      = { workspace = true }
+tokio          = { workspace = true }
+# temporarily removed for publish (circular/forward dev-dep); restore after publish complete
+# oxirpc-reflect = { workspace = true }
+filetime       = { workspace = true }
+
+[[test]]
+name = "compile_link"
+path = "tests/compile_link.rs"
+
+[[test]]
+name = "codegen"
+path = "tests/codegen.rs"
+
+[[test]]
+name = "build_hardening"
+path = "tests/build_hardening.rs"
+
+[[test]]
+name = "compile"
+path = "tests/compile.rs"
+
+[[test]]
+name = "reflect_compat"
+path = "tests/reflect_compat.rs"
+
+[[test]]
+name = "cache"
+path = "tests/cache.rs"
+
+[[bench]]
+name    = "large_proto_compile"
+harness = false
+
+[[bench]]
+name    = "protox_parse"
+harness = false
+
+[[test]]
+name = "health_integration"
+path = "tests/health_integration.rs"

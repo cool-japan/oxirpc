@@ -1,0 +1,20 @@
+[package]
+name = "oxirpc-adapter-aws-lc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "OxiRPC adapter: aws-lc-rs backed rustls CryptoProvider"
+categories = ["cryptography", "network-programming"]
+keywords = ["grpc", "rustls", "aws-lc-rs", "cooljapan", "oxirpc"]
+
+[features]
+default = []
+# Enables the aws-lc-rs CryptoProvider via rustls's built-in aws_lc_rs feature.
+# This feature-gates C/FFI code — the default closure remains Pure Rust.
+aws-lc = ["rustls/aws_lc_rs"]
+
+[dependencies]
+oxirpc-core = { workspace = true }
+rustls = { workspace = true }

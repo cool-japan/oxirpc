@@ -1,0 +1,95 @@
+[package]
+name = "oxirpc-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Core types and error for OxiRPC"
+keywords = ["grpc", "tonic", "pure-rust", "cooljapan", "oxirpc"]
+categories = ["network-programming", "asynchronous"]
+
+[features]
+default = []
+tls = [
+    "dep:oxitls",
+    "dep:rustls",
+    "dep:rustls-pemfile",
+    "dep:rustls-pki-types",
+]
+# Legacy OxiArcGzip helper module (M5/7a).
+compression = ["dep:oxiarc-deflate"]
+# gRPC compression encodings (encoding module).
+gzip = ["dep:oxiarc-deflate"]
+zstd = ["dep:oxiarc-zstd"]
+# OxiProto error bridge: enables From<oxiproto::OxiProtoError> for OxiRpcError.
+oxiproto = ["dep:oxiproto"]
+
+[dependencies]
+tonic = { workspace = true }
+futures-core = { workspace = true }
+http = { workspace = true }
+http-body = { workspace = true }
+http-body-util = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "rt"] }
+tokio-util = { workspace = true }
+
+[dependencies.oxitls]
+workspace = true
+optional = true
+
+[dependencies.rustls]
+workspace = true
+optional = true
+
+[dependencies.rustls-pemfile]
+workspace = true
+optional = true
+
+[dependencies.rustls-pki-types]
+workspace = true
+optional = true
+
+[dependencies.oxiarc-deflate]
+workspace = true
+optional = true
+
+[dependencies.oxiarc-zstd]
+workspace = true
+optional = true
+
+[dependencies.oxiproto]
+workspace = true
+optional = true
+
+[dev-dependencies]
+rcgen     = { workspace = true }
+tokio     = { workspace = true, features = ["full"] }
+criterion = { workspace = true }
+prost     = { workspace = true }
+
+[[bench]]
+name    = "frame_codec"
+harness = false
+
+[[bench]]
+name    = "compression_throughput"
+harness = false
+required-features = ["gzip"]
+
+[[bench]]
+name    = "metadata_lookup"
+harness = false
+
+[[bench]]
+name             = "tls_config_construction"
+harness          = false
+required-features = ["tls"]
+
+[[bench]]
+name    = "wire_codec"
+harness = false

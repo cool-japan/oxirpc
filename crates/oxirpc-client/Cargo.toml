@@ -1,0 +1,87 @@
+[package]
+name = "oxirpc-client"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "OxiRPC client: plaintext channel builder, TLS, metrics"
+keywords = ["grpc", "client", "tonic", "pure-rust", "oxirpc"]
+categories = ["network-programming", "asynchronous"]
+
+[features]
+default = []
+tls = [
+    "dep:tokio-rustls",
+    "dep:rustls",
+    "dep:rustls-pki-types",
+    "dep:hyper-util",
+    "oxirpc-core/tls",
+]
+
+[dependencies]
+oxirpc-core  = { workspace = true }
+tonic        = { workspace = true }
+tower        = { workspace = true }
+tokio        = { workspace = true }
+http         = { workspace = true }
+hyper        = { workspace = true }
+h2           = { workspace = true }
+bytes        = { workspace = true }
+http-body    = { workspace = true }
+tokio-util   = { workspace = true }
+futures-util     = { workspace = true }
+prost            = { workspace = true }
+pin-project-lite = { workspace = true }
+
+[dependencies.tokio-rustls]
+workspace = true
+optional = true
+
+[dependencies.rustls]
+workspace = true
+optional = true
+
+[dependencies.rustls-pki-types]
+workspace = true
+optional = true
+
+[dependencies.hyper-util]
+workspace = true
+optional = true
+
+[dev-dependencies]
+tokio            = { workspace = true }
+tonic            = { workspace = true }
+prost            = { workspace = true }
+tonic-prost      = { workspace = true }
+tonic-health     = { workspace = true }
+tokio-stream     = { workspace = true }
+rcgen            = { workspace = true }
+oxirpc-core      = { workspace = true, features = ["tls"] }
+# temporarily removed for publish (circular/forward dev-dep); restore after publish complete
+# oxirpc-server    = { workspace = true, features = ["native", "tls", "health"] }
+# oxirpc-health    = { workspace = true }
+http             = { workspace = true }
+criterion        = { workspace = true }
+h2               = { workspace = true }
+bytes            = { workspace = true }
+rustls           = { workspace = true }
+rustls-pki-types = { workspace = true }
+tokio-rustls     = { workspace = true }
+
+[[bench]]
+name    = "channel_pool_get"
+harness = false
+
+[[bench]]
+name    = "retry_overhead"
+harness = false
+
+[[bench]]
+name    = "connection_bench"
+harness = false
+
+[[bench]]
+name    = "channel_pool_memory"
+harness = false

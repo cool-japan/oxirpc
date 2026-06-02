@@ -1,0 +1,128 @@
+[package]
+name = "oxirpc"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Pure-Rust gRPC facade — client + server + no-protoc codegen"
+keywords = ["grpc", "tonic", "pure-rust", "cooljapan", "oxirpc"]
+categories = ["network-programming", "asynchronous"]
+
+[features]
+default = []
+client      = ["dep:oxirpc-client"]
+server      = ["dep:oxirpc-server", "dep:tower", "dep:http", "dep:axum"]
+native      = ["server", "oxirpc-server/native"]
+tls         = ["oxirpc-core/tls", "dep:rustls", "oxirpc-server?/tls"]
+reflect     = ["dep:oxirpc-reflect"]
+web         = ["dep:oxirpc-web"]
+health      = ["dep:oxirpc-health"]
+compression = ["oxirpc-core/compression"]
+gzip        = ["oxirpc-core/gzip"]
+zstd        = ["oxirpc-core/zstd"]
+aws-lc      = ["dep:oxirpc-adapter-aws-lc", "oxirpc-adapter-aws-lc/aws-lc"]
+# Proto type system integration via OxiProto (path-dep; NOT in full — not on crates.io).
+oxiproto    = ["dep:oxiproto", "oxirpc-core/oxiproto"]
+# Convenience: enable all Pure-Rust sub-features (no aws-lc / no FFI).
+full = [
+    "client",
+    "server",
+    "native",
+    "tls",
+    "reflect",
+    "web",
+    "health",
+    "compression",
+    "gzip",
+    "zstd",
+]
+
+[dependencies]
+oxirpc-core             = { workspace = true }
+oxirpc-client           = { workspace = true, optional = true }
+oxirpc-server           = { workspace = true, optional = true }
+oxirpc-reflect          = { workspace = true, optional = true }
+oxirpc-web              = { workspace = true, optional = true }
+oxirpc-health           = { workspace = true, optional = true }
+oxirpc-adapter-aws-lc   = { workspace = true, optional = true }
+oxiproto                = { workspace = true, optional = true }
+tonic          = { workspace = true }
+tonic-prost    = { workspace = true }
+tower          = { workspace = true, optional = true }
+http           = { workspace = true, optional = true }
+axum           = { workspace = true, optional = true }
+
+[dependencies.rustls]
+workspace = true
+optional = true
+
+[build-dependencies]
+oxirpc-build      = { workspace = true }
+tonic-prost-build = { workspace = true }
+
+[dev-dependencies]
+prost          = { workspace = true }
+tonic          = { workspace = true }
+tonic-prost    = { workspace = true }
+tokio          = { workspace = true }
+tokio-stream   = { workspace = true }
+rustls         = { workspace = true }
+rustls-pemfile = { workspace = true }
+rcgen          = { workspace = true }
+criterion      = { workspace = true }
+oxirpc-core    = { workspace = true }
+oxirpc-server  = { workspace = true, features = ["native"] }
+oxirpc-health  = { workspace = true }
+oxirpc-reflect    = { workspace = true }
+tonic-health      = { workspace = true }
+tonic-reflection  = { workspace = true }
+oxirpc-client  = { workspace = true }
+rustls-pki-types = { workspace = true }
+futures-util   = { workspace = true }
+http-body      = { workspace = true }
+
+[[test]]
+name = "native_server_e2e"
+path = "tests/native_server_e2e.rs"
+required-features = ["native", "health"]
+
+[[test]]
+name = "native_e2e"
+path = "tests/native_e2e.rs"
+required-features = ["native", "health"]
+
+[[test]]
+name = "cross_validate"
+path = "tests/cross_validate.rs"
+required-features = ["native", "client", "reflect", "health"]
+
+[[test]]
+name = "load_concurrency"
+path = "tests/load_concurrency.rs"
+required-features = ["native", "health"]
+
+[[test]]
+name = "conformance"
+path = "tests/conformance.rs"
+
+[[test]]
+name = "proto_types"
+path = "tests/proto_types.rs"
+required-features = ["oxiproto"]
+
+[[bench]]
+name = "interceptor_chain"
+harness = false
+
+[[bench]]
+name = "roundtrip"
+harness = false
+
+[[bench]]
+name = "facade_reexport_overhead"
+harness = false
+
+[[bench]]
+name = "native_vs_tonic"
+harness = false

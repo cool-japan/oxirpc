@@ -1,0 +1,17 @@
+[package]
+name = "oxirpc-fuzz"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "wire_frame"
+path = "fuzz_targets/wire_frame.rs"
+
+[dependencies]
+libfuzzer-sys = "0.4"
+oxirpc-core = { path = "../crates/oxirpc-core" }
+bytes = "1"
+tokio-util = { version = "0.7", features = ["codec"] }
+
+[workspace]

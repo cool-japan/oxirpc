@@ -1,0 +1,11 @@
+[bans]
+deny = [
+  { name = "flate2" },
+  { name = "protobuf-src" },
+  { name = "ring" },
+  { name = "aws-lc-rs" },
+  { name = "aws-lc-sys" },
+  { name = "openssl" },
+  { name = "openssl-sys" },
+  { name = "native-tls" },
+]
