@@ -58,10 +58,9 @@ tonic-prost      = { workspace = true }
 tonic-health     = { workspace = true }
 tokio-stream     = { workspace = true }
 rcgen            = { workspace = true }
-oxirpc-core      = { workspace = true, features = ["tls"] }
-# temporarily removed for publish (circular/forward dev-dep); restore after publish complete
-# oxirpc-server    = { workspace = true, features = ["native", "tls", "health"] }
-# oxirpc-health    = { workspace = true }
+oxirpc-core      = { path = "../oxirpc-core", features = ["tls"] }
+oxirpc-server    = { path = "../oxirpc-server", features = ["native", "tls", "health"] }
+oxirpc-health    = { path = "../oxirpc-health" }
 http             = { workspace = true }
 criterion        = { workspace = true }
 h2               = { workspace = true }

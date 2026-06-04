@@ -63,7 +63,7 @@ pub type TlsIo = TokioIo<tokio_rustls::client::TlsStream<TcpStream>>;
 /// A Pure-Rust TLS connector backed by `tokio-rustls`.
 ///
 /// Implements `tower::Service<Uri>` and produces a [`TlsIo`] ready for use
-/// with [`ClientBuilder::connect_with_connector`].
+/// with `ClientBuilder::connect_with_connector`.
 ///
 /// The connector dials a TCP connection to the host/port from the URI,
 /// performs a TLS handshake using SNI from the stored `server_name`, and

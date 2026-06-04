@@ -41,6 +41,7 @@ Wraps tonic-web (`GrpcWebLayer`, `GrpcWebService`, `grpc_web_layer()`) and adds 
 - [x] Test trailer frame encoding: trailers appear in response body (done 2026-05-26)
 - [x] Test server-streaming: multiple data frames followed by trailer frame (covered by plan block above)
 - [ ] Integration test with a browser-based gRPC-Web client (via headless browser)
+  - **BLOCKED: requires headless browser environment**
 - [x] Test error responses: gRPC error status codes translated to HTTP status + trailers (done 2026-05-26 — `all_grpc_status_codes_in_trailers` covers codes 0-16; `error_trailer_with_unicode_message` covers UTF-8 grpc-message; `two_data_frames_then_trailer_roundtrip` covers server-streaming shape)
 
 ## Performance
@@ -56,3 +57,4 @@ Wraps tonic-web (`GrpcWebLayer`, `GrpcWebService`, `grpc_web_layer()`) and adds 
   - **Files:** new `tests/reflect_integration.rs`, extend `Cargo.toml` (dev-deps: oxirpc-reflect, prost-types)
   - **Tests:** `reflect_list_services_via_grpc_web_binary`, `reflect_via_grpc_web_text_mode`, `reflect_file_by_name_via_grpc_web`, `reflect_unknown_service_returns_error_via_grpc_web`, `grpc_web_layer_preserves_reflection_service_name`
 - [ ] Verify compatibility with grpc-web JavaScript/TypeScript client libraries
+  - **BLOCKED: requires headless browser environment**

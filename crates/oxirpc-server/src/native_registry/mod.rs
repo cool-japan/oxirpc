@@ -1,7 +1,7 @@
 //! Service registry for the native HTTP/2 transport.
 //!
 //! [`NativeServiceRegistry`] collects a set of named gRPC services and
-//! type-erases them behind [`BoxedNativeService`].  After all services have
+//! type-erases them behind `BoxedNativeService`.  After all services have
 //! been added, call [`NativeServiceRegistry::into_service`] to obtain a
 //! [`RegistryService`] that implements `tower::Service` and can be driven
 //! by the native hyper transport.

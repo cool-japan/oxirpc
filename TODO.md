@@ -1,7 +1,7 @@
 # OxiRPC Project TODO
 
-## Status — v0.1.0 released 2026-06-01
-Pure-Rust gRPC stack. 671 tests pass (default features); clippy clean (`-D warnings`);
+## Status — v0.1.1 released 2026-06-04
+Pure-Rust gRPC stack. 759 tests pass (all features); clippy clean (`-D warnings`);
 rustdoc clean; default closure is FFI-free. All milestones M0–M8 complete.
 All sub-crates operational: core (TLS via OxiTLS, native StatusCode/Metadata/
 grpc-timeout/CompressionEncoding+Encoding via OxiARC), build (no protoc; compile_to_fds,
@@ -110,7 +110,6 @@ replace tonic with native Pure Rust gRPC implementation.
   - **Risk:** Path-dep; gated by prerequisite `cargo build -p oxirpc-core --features oxiproto`. Deeper integration (reflect DescriptorPool, build codegen) is a follow-up.
 - [x] Coordinate with OxiARC for compression
 - [x] Coordinate with OxiTLS for TLS configuration
-- [ ] Test with OxiGenAI for AI inference serving
 - [ ] HTTP/3 support deferred to OxiQuic
 
 ## Open Questions
@@ -131,3 +130,4 @@ replace tonic with native Pure Rust gRPC implementation.
 - [x] oxiproto-reflect DescriptorPool in oxirpc-reflect — swap static file-descriptor handling to `oxiproto_reflect::DescriptorPool::parse_from_bytes`; requires reading oxiproto-reflect API carefully (reflect:56) (done 2026-05-30)
 - [x] oxiproto-build for proto parsing in oxirpc-build — route proto compilation through oxiproto-build as shared parser; codegen change, separate round (build:54) (done 2026-05-30)
 - [ ] HTTP/3 support via OxiQuic — substantial new transport on `oxiquic-h3` v0.0.0; large net-new code, plan as its own initiative (root:105)
+  - **DEFERRED: large initiative; plan separately once oxiquic-h3 matures**

@@ -39,8 +39,7 @@ prost-types    = { workspace = true }
 prost          = { workspace = true }
 criterion      = { workspace = true }
 tokio          = { workspace = true }
-# temporarily removed for publish (circular/forward dev-dep); restore after publish complete
-# oxirpc-reflect = { workspace = true }
+oxirpc-reflect = { path = "../oxirpc-reflect" }
 filetime       = { workspace = true }
 
 [[test]]

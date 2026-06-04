@@ -5,6 +5,27 @@ All notable changes to OxiRPC are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-06-04
+
+### Changed
+
+- `tls` feature in the `oxirpc` facade crate now also activates
+  `oxirpc-client?/tls`; previously enabling `tls` on the facade left the
+  client crate's TLS support disabled, requiring callers to opt in separately.
+- All intra-workspace dev-dependencies that were temporarily commented out for
+  the initial publish (`oxirpc-reflect` in `oxirpc-build`, `oxirpc-server` +
+  `oxirpc-health` in `oxirpc-client`, `oxirpc-reflect` + `oxirpc-web` in
+  `oxirpc-health`) have been restored so the full integration test suite runs
+  against the published crates.
+- All workspace crates bumped to version 0.1.1.
+
+### Fixed
+
+- Race condition in `oxirpc-build` integration tests: concurrent tests that
+  set the `OUT_DIR` environment variable could corrupt each other's build cache
+  paths. A process-wide `OUT_DIR_LOCK` mutex now serialises all tests that
+  read or write `OUT_DIR`.
+
 ## [0.1.0] — 2026-06-01
 
 ### Summary
@@ -80,5 +101,6 @@ paths.
   safe to ignore for plain gRPC usage.
 - HTTP/3 support is deferred to OxiQuic.
 
+[0.1.1]: https://github.com/cool-japan/oxirpc/releases/tag/v0.1.1
 [0.1.0]: https://github.com/cool-japan/oxirpc/releases/tag/v0.1.0
 

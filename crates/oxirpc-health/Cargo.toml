@@ -38,10 +38,9 @@ tower          = { workspace = true }
 bytes          = { workspace = true }
 tokio-stream   = { workspace = true }
 criterion      = { workspace = true }
-oxirpc-core    = { workspace = true }
-# temporarily removed for publish (circular/forward dev-dep); restore after publish complete
-# oxirpc-reflect = { workspace = true }
-# oxirpc-web     = { workspace = true }
+oxirpc-core    = { path = "../oxirpc-core" }
+oxirpc-reflect = { path = "../oxirpc-reflect" }
+oxirpc-web     = { path = "../oxirpc-web" }
 
 [[bench]]
 name    = "health_bench"

@@ -14,7 +14,7 @@ default = []
 client      = ["dep:oxirpc-client"]
 server      = ["dep:oxirpc-server", "dep:tower", "dep:http", "dep:axum"]
 native      = ["server", "oxirpc-server/native"]
-tls         = ["oxirpc-core/tls", "dep:rustls", "oxirpc-server?/tls"]
+tls         = ["oxirpc-core/tls", "dep:rustls", "oxirpc-server?/tls", "oxirpc-client?/tls"]
 reflect     = ["dep:oxirpc-reflect"]
 web         = ["dep:oxirpc-web"]
 health      = ["dep:oxirpc-health"]
@@ -71,13 +71,13 @@ rustls         = { workspace = true }
 rustls-pemfile = { workspace = true }
 rcgen          = { workspace = true }
 criterion      = { workspace = true }
-oxirpc-core    = { workspace = true }
-oxirpc-server  = { workspace = true, features = ["native"] }
-oxirpc-health  = { workspace = true }
-oxirpc-reflect    = { workspace = true }
+oxirpc-core    = { path = "../oxirpc-core" }
+oxirpc-server  = { path = "../oxirpc-server", features = ["native"] }
+oxirpc-health  = { path = "../oxirpc-health" }
+oxirpc-reflect    = { path = "../oxirpc-reflect" }
 tonic-health      = { workspace = true }
 tonic-reflection  = { workspace = true }
-oxirpc-client  = { workspace = true }
+oxirpc-client  = { path = "../oxirpc-client" }
 rustls-pki-types = { workspace = true }
 futures-util   = { workspace = true }
 http-body      = { workspace = true }

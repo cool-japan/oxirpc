@@ -42,15 +42,15 @@ workspace = true
 [dev-dependencies]
 tonic          = { workspace = true }
 tokio          = { workspace = true }
-oxirpc-health  = { workspace = true }
-oxirpc-reflect = { workspace = true }
+oxirpc-health  = { path = "../oxirpc-health" }
+oxirpc-reflect = { path = "../oxirpc-reflect" }
 prost          = { workspace = true }
 prost-types    = { workspace = true }
 criterion      = { workspace = true }
 bytes          = { workspace = true }
 http-body-util = { workspace = true }
 http           = { workspace = true }
-oxirpc-core    = { workspace = true }
+oxirpc-core    = { path = "../oxirpc-core" }
 
 [dev-dependencies.hyper]
 workspace = true

@@ -47,6 +47,7 @@ Functional gRPC health checking (v1): `health_service()` returns `(HealthServer,
 - [x] Test overall server health (empty string service name)
 - [x] Test health probe function: returns Serving when probe succeeds, NotServing when probe fails
 - [ ] Integration test with grpc-health-probe binary
+  - **BLOCKED: requires external tooling not available in Pure Rust test env**
 
 ## Performance
 - [x] Benchmark Check RPC latency (should be <1ms)
@@ -61,3 +62,4 @@ Functional gRPC health checking (v1): `health_service()` returns `(HealthServer,
 - [x] Ensure health service works through oxirpc-web gRPC-Web bridge
 - [x] Ensure health service is discoverable via oxirpc-reflect reflection
 - [ ] Test with Kubernetes liveness/readiness probe configuration
+  - **BLOCKED: requires external tooling not available in Pure Rust test env**

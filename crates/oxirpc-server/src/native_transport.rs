@@ -3,7 +3,7 @@
 //! This module provides a raw hyper-H2 accept loop that bypasses tonic's
 //! transport layer entirely in the hot path. The accept loop:
 //!
-//! 1. Binds / reuses a [`TcpListener`].
+//! 1. Binds / reuses a `tokio::net::TcpListener`.
 //! 2. Optionally wraps each accepted stream with TLS via `tokio-rustls`.
 //! 3. Hands the I/O to `hyper::server::conn::http2::Builder::serve_connection`.
 //! 4. Converts `hyper::body::Incoming` → [`oxirpc_core::wire::NativeBody`] before
@@ -11,9 +11,9 @@
 //!
 //! # Two entry points
 //!
-//! - [`serve_native`] — accepts a [`tonic::service::Routes`] (the original API,
+//! - `serve_native` — accepts a `tonic::service::Routes` (the original API,
 //!   kept for backwards compatibility with [`crate::ServeReady`]).
-//! - [`serve_native_with_service`] — accepts any `tower::Service` that handles
+//! - `serve_native_with_service` — accepts any `tower::Service` that handles
 //!   `Request<NativeBody>` and returns `Response<RespB>` (generic over
 //!   the response body type). Used by [`crate::ServeReady::serve_native_registry`].
 //!
@@ -53,7 +53,7 @@ use oxirpc_core::OxiRpcError;
 ///
 /// # Parameters
 ///
-/// - `listener` — a pre-bound [`TcpListener`].
+/// - `listener` — a pre-bound `tokio::net::TcpListener`.
 /// - `service`  — a `tower::Service<Request<NativeBody>>` that is
 ///   `Clone + Send + 'static`.
 /// - `tls_config` — when present, each TCP stream is wrapped with TLS before
@@ -166,7 +166,7 @@ where
 ///
 /// # Parameters
 ///
-/// - `listener` — a pre-bound [`TcpListener`] (may be port `0` for OS-assigned).
+/// - `listener` — a pre-bound `tokio::net::TcpListener` (may be port `0` for OS-assigned).
 /// - `routes` — a [`tonic::service::Routes`] that handles each request.
 /// - `tls_config` — when present, each TCP stream is wrapped with TLS before H2.
 ///   Requires the `tls` feature.

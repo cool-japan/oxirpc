@@ -20,6 +20,16 @@ Facade crate re-exporting Code, OxiRpcError, OxiRpcResult, Request, Response, St
 
 ## API Improvements
 - [ ] Remove feature gates where possible once native implementations replace tonic
+  - **INVESTIGATED 2026-06-03 — DEFERRED (not yet actionable)**
+  - Each feature gate is independently justified and cannot be removed yet:
+    - `client` / `server`: gate optional sub-crates (`oxirpc-client`, `oxirpc-server`). Removing would force every user to compile these heavy crates regardless of need.
+    - `tls`: gates `rustls`, `rustls-pki-types`, `tokio-rustls` — optional but non-trivial deps. Must stay. Fixed bug: the facade's `tls` feature was not forwarding `oxirpc-client?/tls`, causing `--all-features` compile failure in `native_server_e2e` TLS test (fixed in same pass).
+    - `reflect`, `web`, `health`: gate optional protocol-extension sub-crates. No native alternatives exist yet.
+    - `compression` / `gzip` / `zstd`: gate OxiARC compression backends which are optional runtime features.
+    - `aws-lc`: explicitly gates FFI (C code via aws-lc-sys). Must always be opt-in per Pure Rust Policy.
+    - `oxiproto`: path dependency not on crates.io; explicitly excluded from `full`.
+    - `native`: tonic is still load-bearing — `serve_native()` in `native_transport.rs` accepts `tonic::service::Routes`; `ClientBuilder::connect()` and `connect_lazy()` return `tonic::transport::Channel`. The native transport is a hybrid, not a full tonic replacement.
+  - **Pre-condition for re-evaluation:** when `oxirpc-server` and `oxirpc-client` provide complete tonic-free paths (no `tonic::service::Routes`, no `tonic::transport::Channel` in public APIs), revisit `client`/`server`/`native` gates.
 - [x] Add top-level convenience functions: `oxirpc::serve(addr, service)`, `oxirpc::connect(endpoint)`
 - [x] Add comprehensive crate-level documentation with end-to-end example
 - [x] Document feature flag matrix showing what each feature enables
@@ -55,4 +65,4 @@ Facade crate re-exporting Code, OxiRpcError, OxiRpcResult, Request, Response, St
   - **Tests:** `cargo test -p oxirpc --features oxiproto` — test constructs/uses an oxiproto type via the re-export.
   - **Risk:** Path-dep — prerequisite: `cargo build -p oxirpc-core --features oxiproto` passes. Stop and return deviated if not.
 - [x] Document recommended dependency configuration for downstream users (migration guide + feature flag matrix in crate docs)
-- [ ] Test with OxiGenAI (gRPC-based AI inference service)
+

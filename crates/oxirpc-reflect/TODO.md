@@ -44,6 +44,7 @@ Functional gRPC server reflection: v1 and v1alpha protocols via tonic-reflection
 - [x] Test list_services empty on empty pool (done 2026-05-26)
 - [x] Test error handling: unregistered service name returns NOT_FOUND
 - [ ] Integration test with grpcurl/grpc_cli against running reflection service
+  - **BLOCKED: requires external CLI tooling (grpcurl, grpcui) not available in test env**
 
 ## Performance
 - [x] Benchmark descriptor lookup time for large service registries (100+ services)
@@ -55,3 +56,4 @@ Functional gRPC server reflection: v1 and v1alpha protocols via tonic-reflection
 - [x] Ensure oxirpc-build generates FDS bytes compatible with reflection registration — `tests/reflect_compat.rs` in oxirpc-build (done 2026-05-29)
 - [x] Use oxiproto-reflect DescriptorPool once native implementation exists (done 2026-05-30 — `PoolBackend::Oxiproto` + `NativeReflectionService::with_oxiproto_pool` + `ReflectionBuilder::register_oxiproto_pool` under `oxiproto` feature)
 - [ ] Test interop with standard gRPC reflection clients (grpcurl, grpcui, Postman)
+  - **BLOCKED: requires external CLI tooling (grpcurl, grpcui) not available in test env**

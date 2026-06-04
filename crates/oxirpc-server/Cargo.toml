@@ -97,10 +97,10 @@ workspace = true
 optional = true
 
 [dev-dependencies]
-oxirpc-health      = { workspace = true }
-oxirpc-reflect     = { workspace = true }
-oxirpc-core        = { workspace = true, features = ["tls"] }
-oxirpc-client      = { workspace = true, features = ["tls"] }
+oxirpc-health      = { path = "../oxirpc-health" }
+oxirpc-reflect     = { path = "../oxirpc-reflect" }
+oxirpc-core        = { path = "../oxirpc-core", features = ["tls"] }
+oxirpc-client      = { path = "../oxirpc-client", features = ["tls"] }
 tonic-health       = { workspace = true }
 tonic-prost        = { workspace = true }
 tonic-reflection   = { workspace = true }

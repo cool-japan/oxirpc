@@ -3,6 +3,20 @@
 
 use oxirpc_build::{Builder, OxiRpcBuildError};
 use std::fs;
+use std::sync::Mutex;
+
+// ---------------------------------------------------------------------------
+// Global env-var serialization lock
+//
+// The process environment is shared across all threads in a test binary.
+// Several tests here set `OUT_DIR` (which `compile_to_fds` reads for its
+// incremental cache) and tests that *don't* set `OUT_DIR` can inadvertently
+// pick up another test's stale value.  We use a process-wide mutex so that
+// only one test modifies or relies on `OUT_DIR` at a time.
+// ---------------------------------------------------------------------------
+
+/// Tests that set or depend on `OUT_DIR` must hold this lock for the duration.
+static OUT_DIR_LOCK: Mutex<()> = Mutex::new(());
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -27,6 +41,7 @@ fn unique_out_dir(tag: &str) -> std::path::PathBuf {
 
 #[test]
 fn compile_str_roundtrip_succeeds_or_returns_structured_error() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     let src = r#"
 syntax = "proto3";
 package test;
@@ -39,8 +54,6 @@ service PingService {
 
     let out = unique_out_dir("str-roundtrip");
     fs::create_dir_all(&out).expect("create out dir");
-    // Safety: only this test thread sets this env var for the process.
-    // In practice build tests run single-threaded (nextest isolates).
     std::env::set_var("OUT_DIR", &out);
 
     let result = Builder::default().compile_str("test", src);
@@ -62,6 +75,7 @@ service PingService {
 
 #[test]
 fn compile_str_malformed_proto_gives_structured_error() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     let out = unique_out_dir("str-malformed");
     fs::create_dir_all(&out).expect("create out dir");
     std::env::set_var("OUT_DIR", &out);
@@ -157,6 +171,7 @@ fn proto_error_display_no_location() {
 
 #[test]
 fn compile_to_fds_missing_file_gives_proto_error() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     let dir = std::env::temp_dir();
     let missing = dir.join("definitely_does_not_exist_build_hardening.proto");
 
@@ -177,6 +192,7 @@ fn compile_to_fds_missing_file_gives_proto_error() {
 
 #[test]
 fn compile_checked_warns_on_missing_package() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     // Write a proto with no package declaration into a temp dir.
     let dir = unique_out_dir("no-pkg");
     fs::create_dir_all(&dir).expect("create dir");
@@ -225,6 +241,7 @@ fn codec_path_compiles() {
 
 #[test]
 fn on_progress_callback_invoked() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     use std::sync::{Arc, Mutex};
 
     let messages = Arc::new(Mutex::new(Vec::<String>::new()));
@@ -269,6 +286,7 @@ fn on_progress_callback_invoked() {
 
 #[test]
 fn compile_all_rpc_types_produces_fds() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     let proto_content = r#"
 syntax = "proto3";
 package allrpc;
@@ -364,6 +382,7 @@ message Resp { string result = 1; }
 
 #[test]
 fn build_client_false_suppresses_client_code() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     let proto_src = r#"
 syntax = "proto3";
 package stubtest;
@@ -411,6 +430,7 @@ message Msg { string x = 1; }
 
 #[test]
 fn build_server_false_suppresses_server_code() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     let proto_src = r#"
 syntax = "proto3";
 package stubtest2;
@@ -471,6 +491,7 @@ fn type_attribute_accepted_by_builder() {
 #[cfg(feature = "legacy-tonic-codegen")]
 #[test]
 fn type_attribute_appears_in_generated_output() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     let proto_src = r#"
 syntax = "proto3";
 package attrtest;
@@ -585,6 +606,7 @@ fn default_equals_new() {
 
 #[test]
 fn compile_str_ok_has_warnings_field() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     let proto_src = r#"
 syntax = "proto3";
 package warntest;
@@ -622,6 +644,7 @@ fn disable_package_emission_accepted_by_builder() {
 
 #[test]
 fn compile_with_disable_package_emission_no_package_mod() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     let proto_src = r#"
         syntax = "proto3";
         package mypackage.v1;
@@ -666,6 +689,7 @@ fn compile_with_disable_package_emission_no_package_mod() {
 
 #[test]
 fn compile_to_fds_with_disable_package_emission_returns_fds() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     // compile_to_fds does not run codegen, but the flag must not cause a panic.
     let proto_src = r#"
         syntax = "proto3";
@@ -699,6 +723,7 @@ fn compile_to_fds_with_disable_package_emission_returns_fds() {
 
 #[test]
 fn compile_to_fds_with_nested_package() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     // Proto with deeply nested package: a.b.c.NestedService
     let proto_src = r#"
         syntax = "proto3";
@@ -740,6 +765,7 @@ fn document_minimum_tonic_version() {
 
 #[test]
 fn compile_to_fds_returns_messages() {
+    let _lock = OUT_DIR_LOCK.lock().expect("env-var lock");
     let proto_src = r#"
 syntax = "proto3";
 package msgcheck;

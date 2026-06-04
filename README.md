@@ -8,9 +8,9 @@ protoc), [OxiTLS](https://github.com/cool-japan/oxitls) (Pure-Rust TLS via rustl
 openssl/ring), and [OxiARC](https://github.com/cool-japan/oxiarc) (Pure-Rust gzip/zstd, replaces
 flate2/zstd-sys). The default feature closure is 100% Pure Rust and FFI-free.
 
-## Status: 0.1.0 — All milestones complete (2026-06-01)
+## Status: 0.1.1 — All milestones complete (2026-06-04)
 
-671 tests pass across 9 crates (default features). clippy clean (`-D warnings`).
+759 tests pass across 9 crates (all features). clippy clean (`-D warnings`).
 ~28 000 lines of production Rust. All milestones M0–M8 complete.
 
 ```
@@ -163,7 +163,7 @@ The optional `aws-lc` feature enables `oxirpc-adapter-aws-lc` which pulls
 ## Testing
 
 ```bash
-cargo nextest run                     # 671 tests (default features)
+cargo nextest run --all-features      # 759 tests (all features)
 ```
 
 Includes: unit tests, integration tests (TLS round-trip, gRPC-Web transport,

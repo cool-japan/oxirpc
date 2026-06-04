@@ -131,8 +131,8 @@ pub struct TlsConfig {
 
 #[cfg(feature = "tls")]
 impl TlsConfig {
-    /// Create a new [`TlsConfig`] from an Arc-wrapped rustls [`ClientConfig`] and
-    /// an SNI [`ServerName`].
+    /// Create a new [`TlsConfig`] from an Arc-wrapped rustls `ClientConfig` and
+    /// an SNI `ServerName`.
     ///
     /// # Example
     ///

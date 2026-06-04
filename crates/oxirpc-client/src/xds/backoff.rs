@@ -16,10 +16,10 @@ use std::time::Duration;
 /// use oxirpc_client::xds::backoff::Backoff;
 ///
 /// let mut b = Backoff::default_grpc();
-/// let d0 = b.next(); // ≈ 100 ms ± 20%
-/// let d1 = b.next(); // ≈ 160 ms ± 20%
+/// let d0 = b.next_duration(); // ≈ 100 ms ± 20%
+/// let d1 = b.next_duration(); // ≈ 160 ms ± 20%
 /// b.reset();
-/// let d2 = b.next(); // back to ≈ 100 ms
+/// let d2 = b.next_duration(); // back to ≈ 100 ms
 /// ```
 pub struct Backoff {
     /// Base delay (attempt 0).
@@ -30,7 +30,7 @@ pub struct Backoff {
     factor: f64,
     /// Jitter fraction in `[0.0, 1.0)`.  A value of `0.2` gives ±20 % jitter.
     jitter_frac: f64,
-    /// Number of attempts so far (incremented by [`Backoff::next`]).
+    /// Number of attempts so far (incremented by [`Backoff::next_duration`]).
     attempt: u32,
 }
 
