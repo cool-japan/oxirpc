@@ -1,6 +1,6 @@
 # OxiRPC Project TODO
 
-## Status — v0.1.1 released 2026-06-04
+## Status — v0.1.2 released 2026-06-10
 Pure-Rust gRPC stack. 759 tests pass (all features); clippy clean (`-D warnings`);
 rustdoc clean; default closure is FFI-free. All milestones M0–M8 complete.
 All sub-crates operational: core (TLS via OxiTLS, native StatusCode/Metadata/

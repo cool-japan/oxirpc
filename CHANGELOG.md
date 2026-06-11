@@ -5,6 +5,15 @@ All notable changes to OxiRPC are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-06-10
+
+### Changed
+
+- Upgraded `oxiarc-deflate` from 0.3.2 to 0.3.3 and `oxiarc-zstd` from 0.3.2
+  to 0.3.3 to pick up the latest Pure-Rust compression improvements from the
+  OxiARC ecosystem.
+- All workspace crates bumped to version 0.1.2.
+
 ## [0.1.1] - 2026-06-04
 
 ### Changed
@@ -101,6 +110,7 @@ paths.
   safe to ignore for plain gRPC usage.
 - HTTP/3 support is deferred to OxiQuic.
 
+[0.1.2]: https://github.com/cool-japan/oxirpc/releases/tag/v0.1.2
 [0.1.1]: https://github.com/cool-japan/oxirpc/releases/tag/v0.1.1
 [0.1.0]: https://github.com/cool-japan/oxirpc/releases/tag/v0.1.0
 
