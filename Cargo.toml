@@ -13,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 rust-version = "1.89"
 authors = ["COOLJAPAN OU (Team Kitasan)"]
@@ -23,14 +23,14 @@ description = "Pure-Rust gRPC stack — no protoc, no openssl, no ring by defaul
 
 [workspace.dependencies]
 # workspace internal
-oxirpc-core             = { path = "crates/oxirpc-core",             version = "0.1.2" }
-oxirpc-build            = { path = "crates/oxirpc-build",            version = "0.1.2" }
-oxirpc-client           = { path = "crates/oxirpc-client",           version = "0.1.2" }
-oxirpc-server           = { path = "crates/oxirpc-server",           version = "0.1.2" }
-oxirpc-reflect          = { path = "crates/oxirpc-reflect",          version = "0.1.2" }
-oxirpc-web              = { path = "crates/oxirpc-web",              version = "0.1.2" }
-oxirpc-health           = { path = "crates/oxirpc-health",           version = "0.1.2" }
-oxirpc-adapter-aws-lc   = { path = "crates/oxirpc-adapter-aws-lc",  version = "0.1.2" }
+oxirpc-core             = { path = "crates/oxirpc-core",             version = "0.1.3" }
+oxirpc-build            = { path = "crates/oxirpc-build",            version = "0.1.3" }
+oxirpc-client           = { path = "crates/oxirpc-client",           version = "0.1.3" }
+oxirpc-server           = { path = "crates/oxirpc-server",           version = "0.1.3" }
+oxirpc-reflect          = { path = "crates/oxirpc-reflect",          version = "0.1.3" }
+oxirpc-web              = { path = "crates/oxirpc-web",              version = "0.1.3" }
+oxirpc-health           = { path = "crates/oxirpc-health",           version = "0.1.3" }
+oxirpc-adapter-aws-lc   = { path = "crates/oxirpc-adapter-aws-lc",  version = "0.1.3" }
 
 # tonic 0.14 (no "prost" feature; use codegen + transport)
 # CRITICAL: do NOT enable deflate/gzip/zstd — those pull flate2/zstd
@@ -64,10 +64,10 @@ http-body     = { version = "1" }
 http-body-util = { version = "0.1" }
 
 # oxiproto deps
-oxiproto         = { version = "0.1.2" }
-oxiproto-reflect = { version = "0.1.2" }
-oxiproto-build   = { version = "0.1.2", default-features = false }
-oxiproto-core    = { version = "0.1.2" }
+oxiproto         = { version = "0.1.3" }
+oxiproto-reflect = { version = "0.1.3" }
+oxiproto-build   = { version = "0.1.3", default-features = false }
+oxiproto-core    = { version = "0.1.3" }
 
 # compression (M5/7a) — Pure Rust gzip via OxiArc Deflate; no flate2, no zstd
 oxiarc-deflate = { version = "0.3.3" }
@@ -75,7 +75,7 @@ oxiarc-deflate = { version = "0.3.3" }
 oxiarc-zstd    = { version = "0.3.3" }
 
 # TLS (M2) — Pure Rust via OxiTLS + rustls-rustcrypto; no ring, no aws-lc-rs, no native-tls
-oxitls         = { version = "0.1.2", default-features = false, features = ["pure"] }
+oxitls         = { version = "0.1.3", default-features = false, features = ["pure"] }
 rustls         = { version = "0.23", default-features = false, features = ["std", "tls12"] }
 rustls-pemfile = { version = "2.2" }
 rustls-pki-types = { version = "1" }

@@ -19,6 +19,8 @@ use tokio_util::codec::Decoder as _;
 
 use super::body::{body_channel, NativeBody, NativeBodySender};
 use super::connection::{h2_error_to_oxirpc, Connection, StreamSlot};
+use super::intercept::{apply_metadata_to_headers, request_from_headers};
+use oxirpc_core::interceptor::AsyncInterceptor;
 
 // ── execute_unary ─────────────────────────────────────────────────────────────
 
@@ -40,11 +42,12 @@ pub async fn execute_unary(
     conn: Arc<Connection>,
     req: http::Request<NativeBody>,
     deadline: Option<Instant>,
+    interceptor: Option<Arc<dyn AsyncInterceptor>>,
     _slot: StreamSlot,
 ) -> Result<http::Response<NativeBody>, OxiRpcError> {
     let remaining = deadline.map(|d| d.saturating_duration_since(Instant::now()));
 
-    let fut = do_execute(conn, req, _slot);
+    let fut = do_execute(conn, req, interceptor, _slot);
 
     match remaining {
         Some(dur) if !dur.is_zero() => tokio::time::timeout(dur, fut)
@@ -59,10 +62,20 @@ pub async fn execute_unary(
 async fn do_execute(
     conn: Arc<Connection>,
     req: http::Request<NativeBody>,
+    interceptor: Option<Arc<dyn AsyncInterceptor>>,
     slot: StreamSlot,
 ) -> Result<http::Response<NativeBody>, OxiRpcError> {
     // ── Split request into headers and body ───────────────────────────────────
-    let (parts, body) = req.into_parts();
+    let (mut parts, body) = req.into_parts();
+    if let Some(ref interceptor) = interceptor {
+        let irequest = request_from_headers(&parts.headers);
+        match interceptor.intercept_async(irequest).await {
+            Ok(updated) => apply_metadata_to_headers(&updated, &mut parts.headers),
+            Err(status) => {
+                return Err(OxiRpcError::from_status_code(status.code, status.message));
+            }
+        }
+    }
 
     // Build a headers-only Request<()> for h2::open_stream.
     let h2_req = {

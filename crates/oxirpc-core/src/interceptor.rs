@@ -2,11 +2,13 @@
 //!
 //! Interceptors allow middleware to inspect or mutate `Request<()>` values
 //! before they are dispatched. The sync [`Interceptor`] trait is object-safe
-//! and usable today; [`AsyncInterceptor`] is reserved for the future native
-//! async channel and is not yet wired into any dispatch path.
+//! and usable today; [`AsyncInterceptor`] is an opt-in async interceptor wired
+//! into the native client channel and the native server registry.
 
 use crate::message::Request;
 use crate::rpc::Status;
+use std::future::Future;
+use std::pin::Pin;
 
 /// A synchronous, object-safe request interceptor.
 ///
@@ -27,14 +29,35 @@ where
     }
 }
 
-/// Reserved stub for a future native async interceptor.
+/// An opt-in asynchronous request interceptor.
 ///
-/// Not yet usable — no async dispatch path exists. Callers must poll
-/// [`Interceptor::intercept`] for now.
+/// Wired into the native client channel
+/// (`NativeChannelBuilder::with_async_interceptor`) and the native server
+/// registry (`NativeServiceRegistry::with_async_interceptor`). Implementations
+/// receive a metadata-only `Request<()>` built from the request headers and
+/// either return a (possibly mutated) request to continue — the mutated
+/// metadata is merged back into the outgoing/incoming headers — or a
+/// [`Status`] error to abort the call.
 pub trait AsyncInterceptor: Send + Sync {
-    /// Intercept a request asynchronously.
+    /// Intercept a request asynchronously, returning it (possibly modified) or
+    /// an error.
     fn intercept_async<'a>(
         &'a self,
         req: Request<()>,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Request<()>, Status>> + Send + 'a>>;
+    ) -> Pin<Box<dyn Future<Output = Result<Request<()>, Status>> + Send + 'a>>;
+}
+
+/// Blanket impl so that closures returning a future can be used as async
+/// interceptors.
+impl<F, Fut> AsyncInterceptor for F
+where
+    F: Fn(Request<()>) -> Fut + Send + Sync,
+    Fut: Future<Output = Result<Request<()>, Status>> + Send + 'static,
+{
+    fn intercept_async<'a>(
+        &'a self,
+        req: Request<()>,
+    ) -> Pin<Box<dyn Future<Output = Result<Request<()>, Status>> + Send + 'a>> {
+        Box::pin((self)(req))
+    }
 }

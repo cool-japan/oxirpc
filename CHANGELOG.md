@@ -5,6 +5,41 @@ All notable changes to OxiRPC are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-06-19
+
+### Added
+
+- **`AsyncInterceptor` blanket impl for closures** (`oxirpc-core`): any `Fn(Request<()>) ->
+  impl Future<Output = Result<Request<()>, Status>>` can now be used as an `AsyncInterceptor`
+  directly, without a manual struct implementation.
+- **Client-side async interceptor** (`oxirpc-client`): `NativeChannelBuilder::with_async_interceptor`
+  wires an `Arc<dyn AsyncInterceptor>` into every outgoing unary call. The interceptor runs just
+  before the H2 stream is opened; it may inject or mutate request metadata, or abort the call with
+  a `Status` error that surfaces as `OxiRpcError::Status`.
+- **Server-side async interceptor** (`oxirpc-server`): `NativeServiceRegistry::with_async_interceptor`
+  wires an `Arc<dyn AsyncInterceptor>` into the dispatch path. The interceptor runs before the
+  matched service handler; metadata mutations are merged back into the request headers, and a
+  returned `Status` short-circuits the call with a gRPC error response (grpc-status trailer).
+- **Hash-keyed build-cache filenames** (`oxirpc-build`): the incremental FDS cache is now stored
+  as `$OUT_DIR/.oxirpc-cache/fds-<hash>.bin` where `<hash>` is a stable hash of the sorted proto
+  file paths. Multiple independent `compile_to_fds` calls sharing the same `$OUT_DIR` (e.g. two
+  proto sets in one build script) no longer collide.
+- **gRPC interop conformance fixture** (`oxirpc`): a new `tests/proto/grpc_testing.proto` and
+  `tests/conformance.rs` implement the upstream `grpc.testing.TestService` (empty call, unary
+  call, server/client/full-duplex streaming) against the tonic HTTP/2 transport. When the
+  `GRPC_GO_INTEROP_CLIENT` env var points to the grpc-go interop binary the conformance suite
+  drives it; otherwise tests are skipped so CI without the Go toolchain stays green.
+
+### Changed
+
+- `oxirpc_core::interceptor::AsyncInterceptor`: doc comment updated to reflect that the trait is
+  now wired into both the native client channel and the native server registry (previously marked
+  "reserved stub for future use").
+- `ChannelConfig` (`oxirpc-client`): the `#[derive(Debug)]` macro is replaced by a manual
+  `fmt::Debug` impl so the `Arc<dyn AsyncInterceptor>` field (not `Debug`) no longer blocks
+  derivation; the debug output shows `async_interceptor_set: bool` instead.
+- All workspace crates bumped to version 0.1.3.
+
 ## [0.1.2] - 2026-06-10
 
 ### Changed
@@ -110,6 +145,7 @@ paths.
   safe to ignore for plain gRPC usage.
 - HTTP/3 support is deferred to OxiQuic.
 
+[0.1.3]: https://github.com/cool-japan/oxirpc/releases/tag/v0.1.3
 [0.1.2]: https://github.com/cool-japan/oxirpc/releases/tag/v0.1.2
 [0.1.1]: https://github.com/cool-japan/oxirpc/releases/tag/v0.1.1
 [0.1.0]: https://github.com/cool-japan/oxirpc/releases/tag/v0.1.0

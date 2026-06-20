@@ -23,7 +23,7 @@ use super::connection::{Connection, ConnectionConfig, STATE_DEAD};
 // ── ChannelConfig ─────────────────────────────────────────────────────────────
 
 /// Tuning parameters for a [`NativeChannel`].
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ChannelConfig {
     /// Maximum number of concurrent streams per connection.
     pub max_concurrent_streams_per_conn: usize,
@@ -41,6 +41,8 @@ pub struct ChannelConfig {
     pub resolver_refresh_interval: Duration,
     /// Optional `user-agent` header value.
     pub user_agent: Option<String>,
+    /// Optional opt-in asynchronous request interceptor (runs before each H2 stream opens).
+    pub async_interceptor: Option<std::sync::Arc<dyn oxirpc_core::interceptor::AsyncInterceptor>>,
     /// Optional TLS configuration. `None` → raw TCP.
     ///
     /// When `Some`, all connections in the pool are established over TLS using
@@ -60,9 +62,32 @@ impl Default for ChannelConfig {
             initial_stream_window: 65535,
             resolver_refresh_interval: Duration::from_secs(30),
             user_agent: None,
+            async_interceptor: None,
             #[cfg(feature = "tls")]
             tls: None,
         }
+    }
+}
+
+impl std::fmt::Debug for ChannelConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChannelConfig")
+            .field(
+                "max_concurrent_streams_per_conn",
+                &self.max_concurrent_streams_per_conn,
+            )
+            .field(
+                "max_connections_per_endpoint",
+                &self.max_connections_per_endpoint,
+            )
+            .field("connect_timeout", &self.connect_timeout)
+            .field("keep_alive_while_idle", &self.keep_alive_while_idle)
+            .field("initial_conn_window", &self.initial_conn_window)
+            .field("initial_stream_window", &self.initial_stream_window)
+            .field("resolver_refresh_interval", &self.resolver_refresh_interval)
+            .field("user_agent", &self.user_agent)
+            .field("async_interceptor_set", &self.async_interceptor.is_some())
+            .finish_non_exhaustive()
     }
 }
 
@@ -162,7 +187,14 @@ impl NativeChannel {
     ) -> Result<http::Response<NativeBody>, OxiRpcError> {
         let conn = self.pick_connection().await?;
         let slot = conn.try_acquire()?;
-        execute_unary(conn, req, None, slot).await
+        execute_unary(
+            conn,
+            req,
+            None,
+            self.inner.cfg.async_interceptor.clone(),
+            slot,
+        )
+        .await
     }
 
     /// Execute a gRPC call with an explicit deadline.
@@ -173,7 +205,14 @@ impl NativeChannel {
     ) -> Result<http::Response<NativeBody>, OxiRpcError> {
         let conn = self.pick_connection().await?;
         let slot = conn.try_acquire()?;
-        execute_unary(conn, req, Some(deadline), slot).await
+        execute_unary(
+            conn,
+            req,
+            Some(deadline),
+            self.inner.cfg.async_interceptor.clone(),
+            slot,
+        )
+        .await
     }
 
     /// Pick (or create) a connection from the pool.

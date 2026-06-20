@@ -14,7 +14,7 @@ Beyond raw status reporting, the crate models **Kubernetes probes** ([`ProbeType
 oxirpc-health = "0.1.0"
 
 # With OxiARC-backed compression encodings on the health responses:
-oxirpc-health = { version = "0.1.0", features = ["gzip", "zstd"] }
+oxirpc-health = { version = "0.1.3", features = ["gzip", "zstd"] }
 ```
 
 ## Quick Start

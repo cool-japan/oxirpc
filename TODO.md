@@ -1,16 +1,18 @@
 # OxiRPC Project TODO
 
-## Status — v0.1.2 released 2026-06-10
-Pure-Rust gRPC stack. 759 tests pass (all features); clippy clean (`-D warnings`);
+## Status — v0.1.3 released 2026-06-19
+Pure-Rust gRPC stack. 765 tests pass (all features); clippy clean (`-D warnings`);
 rustdoc clean; default closure is FFI-free. All milestones M0–M8 complete.
 All sub-crates operational: core (TLS via OxiTLS, native StatusCode/Metadata/
-grpc-timeout/CompressionEncoding+Encoding via OxiARC), build (no protoc; compile_to_fds,
-mod attrs, btree_map/bytes, FDS path), client (cloneable config + load-balancing +
-resilience + xDS/ADS), server (config + bound-listener serving + native registry),
-reflect (v1+v1alpha), web (gRPC-Web layer + native frame codec + CorsPolicy), health
-(v1 + status mirror/bulk ops), interceptors (auth/tracing/deadline/rate-limiting/metrics
-/retry/circuit-breaker), facade (prelude, full feature, version()). Goal:
-replace tonic with native Pure Rust gRPC implementation.
+grpc-timeout/CompressionEncoding+Encoding via OxiARC, AsyncInterceptor blanket impl),
+build (no protoc; compile_to_fds with hash-keyed cache isolation, mod attrs,
+btree_map/bytes, FDS path), client (cloneable config + load-balancing + resilience +
+xDS/ADS, async interceptor wired), server (config + bound-listener serving + native
+registry, async interceptor wired), reflect (v1+v1alpha), web (gRPC-Web layer +
+native frame codec + CorsPolicy), health (v1 + status mirror/bulk ops), interceptors
+(auth/tracing/deadline/rate-limiting/metrics/retry/circuit-breaker), facade (prelude,
+full feature, version(), gRPC conformance harness). Goal: replace tonic with native
+Pure Rust gRPC implementation.
 
 ## Milestones
 

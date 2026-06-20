@@ -6,7 +6,8 @@
 // Include the native h2 server fixture directly in this test crate.
 mod native_h2_server;
 use native_h2_server::{
-    spawn_goaway_server, spawn_streaming_server, spawn_trailer_only_server, spawn_unary_ok_server,
+    spawn_goaway_server, spawn_header_echo_server, spawn_streaming_server,
+    spawn_trailer_only_server, spawn_unary_ok_server,
 };
 
 use bytes::Bytes;
@@ -505,4 +506,96 @@ async fn send_tls_unary_response(respond: &mut h2::server::SendResponse<Bytes>, 
     let mut trailers = http::HeaderMap::new();
     trailers.insert("grpc-status", http::HeaderValue::from_static("0"));
     let _ = send_stream.send_trailers(trailers);
+}
+
+// ── async interceptor: inject + abort ──────────────────────────────────────
+
+#[tokio::test]
+async fn async_interceptor_injects_header() {
+    use oxirpc_client::balance::{Endpoint, StaticResolver};
+    use oxirpc_client::native_channel::NativeChannelBuilder;
+    use oxirpc_core::interceptor::AsyncInterceptor;
+    use std::sync::Arc;
+
+    let server = spawn_header_echo_server("x-injected").await;
+
+    let interceptor = |mut req: oxirpc_core::message::Request<()>| async move {
+        req.metadata_mut()
+            .insert("x-injected", "from-interceptor")
+            .unwrap();
+        Ok::<_, oxirpc_core::rpc::Status>(req)
+    };
+
+    let uri = format!("http://{}", server.addr).parse().unwrap();
+    let resolver = StaticResolver::new(vec![Endpoint::new(uri)]);
+    let channel = NativeChannelBuilder::new()
+        .resolver(resolver)
+        .connect_timeout(Duration::from_secs(5))
+        .with_async_interceptor(Arc::new(interceptor) as Arc<dyn AsyncInterceptor>)
+        .build()
+        .await
+        .expect("channel build");
+
+    let req = grpc_request(
+        &server.addr.to_string(),
+        "/test.Service/Unary",
+        NativeBody::empty(),
+    );
+    let resp = channel.call(req).await.expect("call must succeed");
+    assert_eq!(resp.status(), 200);
+    let echoed = resp
+        .headers()
+        .get("x-echoed")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert_eq!(
+        echoed, "from-interceptor",
+        "interceptor must inject the header onto the outgoing request"
+    );
+    server.shutdown();
+}
+
+#[tokio::test]
+async fn async_interceptor_abort_propagates_status() {
+    use oxirpc_client::balance::{Endpoint, StaticResolver};
+    use oxirpc_client::native_channel::NativeChannelBuilder;
+    use oxirpc_core::interceptor::AsyncInterceptor;
+    use oxirpc_core::status::StatusCode;
+    use std::sync::Arc;
+
+    // Use the goaway server only to have a reachable endpoint; the interceptor
+    // aborts before any stream is opened, so the server is never actually hit.
+    let server = spawn_goaway_server().await;
+    let interceptor = |_req: oxirpc_core::message::Request<()>| async move {
+        Err::<oxirpc_core::message::Request<()>, _>(oxirpc_core::rpc::Status::new(
+            StatusCode::PermissionDenied,
+            "blocked",
+        ))
+    };
+    let uri = format!("http://{}", server.addr).parse().unwrap();
+    let resolver = StaticResolver::new(vec![Endpoint::new(uri)]);
+    let channel = NativeChannelBuilder::new()
+        .resolver(resolver)
+        .connect_timeout(Duration::from_secs(5))
+        .with_async_interceptor(Arc::new(interceptor) as Arc<dyn AsyncInterceptor>)
+        .build()
+        .await
+        .expect("channel build");
+    let req = grpc_request(
+        &server.addr.to_string(),
+        "/test.Service/Unary",
+        NativeBody::empty(),
+    );
+    let err = channel
+        .call(req)
+        .await
+        .expect_err("interceptor must abort the call");
+    // The abort surfaces as an OxiRpcError::Status carrying PermissionDenied.
+    match err {
+        oxirpc_core::OxiRpcError::Status(s) => {
+            assert_eq!(s.code(), tonic::Code::PermissionDenied);
+        }
+        other => panic!("expected Status error, got {other:?}"),
+    }
+    server.shutdown();
 }

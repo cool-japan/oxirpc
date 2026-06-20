@@ -13,6 +13,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use http::{Request, Response};
+#[cfg(feature = "native")]
 use oxirpc_core::wire::{
     server::{error_response_body, grpc_response_headers},
     NativeBody,
@@ -62,6 +63,7 @@ impl Service<Request<tonic::body::Body>> for TonicStyleService {
 // ─── Native response helper ───────────────────────────────────────────────────
 
 /// Build an HTTP 200 + grpc-status: 0 (OK) native response used by CallRecorder.
+#[cfg(feature = "native")]
 fn ok_native_response() -> Response<NativeBody> {
     let body = error_response_body(0, "");
     let mut resp = Response::new(body);

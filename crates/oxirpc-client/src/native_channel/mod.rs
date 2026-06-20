@@ -28,6 +28,7 @@ pub mod builder;
 pub mod call;
 pub mod channel;
 pub mod connection;
+pub(crate) mod intercept;
 
 pub use body::{body_channel, NativeBody, NativeBodySender};
 pub use builder::NativeChannelBuilder;

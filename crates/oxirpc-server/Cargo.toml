@@ -116,6 +116,10 @@ hyper-util         = { workspace = true }
 criterion          = { workspace = true }
 bytes              = { workspace = true }
 
+[[test]]
+name = "native_registry"
+required-features = ["native"]
+
 [[bench]]
 name = "server_bench"
 harness = false

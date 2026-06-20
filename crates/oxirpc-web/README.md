@@ -18,7 +18,7 @@ With message compression enabled (OxiARC-backed):
 
 ```toml
 [dependencies]
-oxirpc-web = { version = "0.1.0", features = ["gzip", "zstd"] }
+oxirpc-web = { version = "0.1.3", features = ["gzip", "zstd"] }
 ```
 
 ## HTTP/1.1 requirement

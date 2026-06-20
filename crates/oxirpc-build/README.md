@@ -16,7 +16,7 @@ Add to `[build-dependencies]` (this is a build-time crate):
 oxirpc-build = "0.1.0"
 
 # All-in-one legacy codegen (message types + service stubs):
-oxirpc-build = { version = "0.1.0", features = ["legacy-tonic-codegen"] }
+oxirpc-build = { version = "0.1.3", features = ["legacy-tonic-codegen"] }
 ```
 
 ## Quick Start

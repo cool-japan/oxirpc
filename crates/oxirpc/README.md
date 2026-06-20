@@ -12,13 +12,13 @@ Because it is a façade, almost everything you import from `oxirpc` is re-export
 ```toml
 [dependencies]
 # Client + server + Pure-Rust TLS
-oxirpc = { version = "0.1.0", features = ["client", "server", "tls"] }
+oxirpc = { version = "0.1.3", features = ["client", "server", "tls"] }
 
 # Everything Pure Rust (no aws-lc, no oxiproto)
-oxirpc = { version = "0.1.0", features = ["full"] }
+oxirpc = { version = "0.1.3", features = ["full"] }
 
 # Server with the native (zero-tonic-transport) path + health
-oxirpc = { version = "0.1.0", features = ["native", "health"] }
+oxirpc = { version = "0.1.3", features = ["native", "health"] }
 ```
 
 Add proto codegen to your `build.rs` (no `protoc` required — see [`oxirpc-build`]):

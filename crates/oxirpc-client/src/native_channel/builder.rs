@@ -47,6 +47,7 @@ pub struct NativeChannelBuilder {
     initial_stream_window: u32,
     resolver_refresh_interval: Duration,
     user_agent: Option<String>,
+    async_interceptor: Option<std::sync::Arc<dyn oxirpc_core::interceptor::AsyncInterceptor>>,
     /// Optional TLS config (enabled by the `tls` feature).
     #[cfg(feature = "tls")]
     tls: Option<TlsConfig>,
@@ -65,6 +66,7 @@ impl NativeChannelBuilder {
             initial_stream_window: 65535,
             resolver_refresh_interval: Duration::from_secs(30),
             user_agent: None,
+            async_interceptor: None,
             #[cfg(feature = "tls")]
             tls: None,
         }
@@ -141,6 +143,23 @@ impl NativeChannelBuilder {
         self
     }
 
+    /// Set an opt-in asynchronous request interceptor.
+    ///
+    /// The interceptor runs on every outgoing request, just before the H2
+    /// stream is opened. It receives a metadata-only
+    /// [`oxirpc_core::message::Request`] populated from the request headers and
+    /// may mutate that metadata (the changes are merged back into the outgoing
+    /// headers) or return a [`oxirpc_core::rpc::Status`] to abort the call.
+    ///
+    /// When no interceptor is set, the request path is unchanged.
+    pub fn with_async_interceptor(
+        mut self,
+        interceptor: std::sync::Arc<dyn oxirpc_core::interceptor::AsyncInterceptor>,
+    ) -> Self {
+        self.async_interceptor = Some(interceptor);
+        self
+    }
+
     /// Use Pure-Rust TLS for all connections in this channel.
     ///
     /// Pass a [`TlsConfig`] built from a `rustls::ClientConfig` (use
@@ -179,6 +198,7 @@ impl NativeChannelBuilder {
             initial_stream_window: self.initial_stream_window,
             resolver_refresh_interval: self.resolver_refresh_interval,
             user_agent: self.user_agent,
+            async_interceptor: self.async_interceptor,
             #[cfg(feature = "tls")]
             tls: self.tls,
         };

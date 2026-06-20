@@ -253,3 +253,59 @@ async fn drain_request(req: Request<h2::RecvStream>) {
         }
     }
 }
+
+// ── spawn_header_echo_server ────────────────────────────────────────────────
+
+/// Spawn a server that echoes the request header `echo_name` value back in a
+/// response header `x-echoed` (or `"<absent>"` if the header was missing),
+/// then returns an empty OK (grpc-status:0) response. Used to verify that a
+/// client interceptor injected a header onto the outgoing request.
+pub async fn spawn_header_echo_server(echo_name: &'static str) -> ServerHandle {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let task = tokio::spawn(async move {
+        loop {
+            let (stream, _) = match listener.accept().await {
+                Ok(v) => v,
+                Err(_) => break,
+            };
+            tokio::spawn(async move {
+                handle_header_echo(stream, echo_name).await;
+            });
+        }
+    });
+    ServerHandle { addr, task }
+}
+
+async fn handle_header_echo(stream: TcpStream, echo_name: &'static str) {
+    let mut conn = match h2::server::handshake(stream).await {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    while let Some(result) = conn.accept().await {
+        let (req, mut respond) = match result {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        let echoed = req
+            .headers()
+            .get(echo_name)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("<absent>")
+            .to_string();
+        drain_request(req).await;
+        let response = Response::builder()
+            .status(200)
+            .header("content-type", "application/grpc+proto")
+            .header("x-echoed", echoed.as_str())
+            .body(())
+            .unwrap();
+        let mut send_stream = match respond.send_response(response, false) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let mut trailers = http::HeaderMap::new();
+        trailers.insert("grpc-status", http::HeaderValue::from_static("0"));
+        let _ = send_stream.send_trailers(trailers);
+    }
+}

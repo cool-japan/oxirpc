@@ -461,7 +461,7 @@ impl Builder {
     ///
     /// When called from inside a Cargo build script (`OUT_DIR` is set), this
     /// method checks the incremental build cache at
-    /// `$OUT_DIR/.oxirpc-cache/fds.bin`.  If the cache exists and is newer
+    /// `$OUT_DIR/.oxirpc-cache/fds-<hash>.bin`.  If the cache exists and is newer
     /// than all proto files and include directories the cached descriptor set
     /// is returned immediately, skipping the parse step entirely.
     pub fn compile_to_fds(
@@ -487,7 +487,7 @@ impl Builder {
 
         // Write to cache (best-effort — don't fail the build on error).
         if let Some(ref out_dir) = out_dir_path {
-            let _ = cache::write(out_dir, &fds);
+            let _ = cache::write(out_dir, protos, &fds);
         }
 
         Ok(fds)

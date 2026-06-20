@@ -14,7 +14,7 @@ The crate also ships a **native hyper-backed HTTP/2 transport** (feature `native
 oxirpc-server = "0.1.0"
 
 # Native hyper H2 transport + TLS + health service:
-oxirpc-server = { version = "0.1.0", features = ["native", "tls", "health"] }
+oxirpc-server = { version = "0.1.3", features = ["native", "tls", "health"] }
 ```
 
 ## Quick Start

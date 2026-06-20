@@ -14,7 +14,7 @@ Beyond the basic builder, the crate provides endpoint **resolution and load-bala
 oxirpc-client = "0.1.0"
 
 # With Pure-Rust TLS:
-oxirpc-client = { version = "0.1.0", features = ["tls"] }
+oxirpc-client = { version = "0.1.3", features = ["tls"] }
 ```
 
 ## Quick Start

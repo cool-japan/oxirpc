@@ -803,6 +803,40 @@ fn interceptor_closure_can_abort() {
     assert_eq!(result.unwrap_err().code, StatusCode::PermissionDenied);
 }
 
+#[tokio::test]
+async fn async_interceptor_closure_passes_through() {
+    use oxirpc_core::interceptor::AsyncInterceptor;
+    use oxirpc_core::message::Request;
+    use oxirpc_core::rpc::Status;
+
+    let interceptor = |mut req: Request<()>| async move {
+        req.metadata_mut().insert("x-added", "yes").unwrap();
+        Ok::<_, Status>(req)
+    };
+
+    let req = Request::new(());
+    let out = interceptor.intercept_async(req).await;
+    let req = out.expect("interceptor should pass through");
+    assert_eq!(req.metadata().get("x-added"), Some("yes"));
+}
+
+#[tokio::test]
+async fn async_interceptor_closure_can_abort() {
+    use oxirpc_core::interceptor::AsyncInterceptor;
+    use oxirpc_core::message::Request;
+    use oxirpc_core::rpc::Status;
+    use oxirpc_core::status::StatusCode;
+
+    let interceptor = |_req: Request<()>| async move {
+        Err::<Request<()>, Status>(Status::new(StatusCode::PermissionDenied, "denied"))
+    };
+
+    let req = Request::new(());
+    let result = interceptor.intercept_async(req).await;
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().code, StatusCode::PermissionDenied);
+}
+
 // ─── OxiProto error bridge ────────────────────────────────────────────────────
 
 #[cfg(feature = "oxiproto")]

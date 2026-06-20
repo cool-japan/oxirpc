@@ -1,0 +1,58 @@
+syntax = "proto3";
+package grpc.testing;
+
+enum PayloadType {
+  COMPRESSABLE = 0;
+}
+
+message Payload {
+  PayloadType type = 1;
+  bytes body = 2;
+}
+
+message Empty {}
+
+message SimpleRequest {
+  PayloadType response_type = 1;
+  int32 response_size = 2;
+  Payload payload = 3;
+  bool fill_username = 4;
+  bool fill_oauth_scope = 5;
+}
+
+message SimpleResponse {
+  Payload payload = 1;
+  string username = 2;
+  string oauth_scope = 3;
+}
+
+message StreamingInputCallRequest {
+  Payload payload = 1;
+}
+
+message StreamingInputCallResponse {
+  int32 aggregated_payload_size = 1;
+}
+
+message ResponseParameters {
+  int32 size = 1;
+  int32 interval_us = 2;
+}
+
+message StreamingOutputCallRequest {
+  PayloadType response_type = 1;
+  repeated ResponseParameters response_parameters = 2;
+  Payload payload = 3;
+}
+
+message StreamingOutputCallResponse {
+  Payload payload = 1;
+}
+
+service TestService {
+  rpc EmptyCall(Empty) returns (Empty);
+  rpc UnaryCall(SimpleRequest) returns (SimpleResponse);
+  rpc StreamingOutputCall(StreamingOutputCallRequest) returns (stream StreamingOutputCallResponse);
+  rpc StreamingInputCall(stream StreamingInputCallRequest) returns (StreamingInputCallResponse);
+  rpc FullDuplexCall(stream StreamingOutputCallRequest) returns (stream StreamingOutputCallResponse);
+}

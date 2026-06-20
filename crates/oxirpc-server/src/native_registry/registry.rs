@@ -27,6 +27,7 @@ use super::service_set::BoxedNativeService;
 pub struct NativeServiceRegistry<B = NativeBody> {
     services: HashMap<&'static str, BoxedNativeService<B>>,
     fallback: Option<BoxedNativeService<B>>,
+    async_interceptor: Option<std::sync::Arc<dyn oxirpc_core::interceptor::AsyncInterceptor>>,
 }
 
 impl<B> NativeServiceRegistry<B>
@@ -39,6 +40,7 @@ where
         Self {
             services: HashMap::new(),
             fallback: None,
+            async_interceptor: None,
         }
     }
 
@@ -78,6 +80,22 @@ where
         self
     }
 
+    /// Set an opt-in asynchronous request interceptor.
+    ///
+    /// The interceptor runs on every dispatched request, before the matched
+    /// service handler. It receives a metadata-only
+    /// [`oxirpc_core::message::Request`] built from the request headers and may
+    /// mutate that metadata (merged back into the request headers) or return a
+    /// [`oxirpc_core::rpc::Status`] to short-circuit the call with a gRPC error
+    /// response. When unset, dispatch is unchanged.
+    pub fn with_async_interceptor(
+        mut self,
+        interceptor: std::sync::Arc<dyn oxirpc_core::interceptor::AsyncInterceptor>,
+    ) -> Self {
+        self.async_interceptor = Some(interceptor);
+        self
+    }
+
     /// Iterate over every registered service name.
     ///
     /// Order is unspecified (determined by the underlying `HashMap`).
@@ -87,7 +105,7 @@ where
 
     /// Consume the registry and produce a dispatchable [`RegistryService<B>`].
     pub fn into_service(self) -> RegistryService<B> {
-        RegistryService::new(self.services, self.fallback)
+        RegistryService::new(self.services, self.fallback, self.async_interceptor)
     }
 }
 

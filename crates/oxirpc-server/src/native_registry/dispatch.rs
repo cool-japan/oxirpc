@@ -17,7 +17,10 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
 use bytes::Bytes;
-use http::{Request, Response};
+use http::{HeaderMap, Request, Response};
+use oxirpc_core::interceptor::AsyncInterceptor;
+use oxirpc_core::message::Request as IRequest;
+use oxirpc_core::metadata::Metadata;
 use oxirpc_core::wire::{
     server::{error_response_body, grpc_response_headers},
     NativeBody,
@@ -45,6 +48,7 @@ type ServiceSlot<B> = Arc<Mutex<BoxedNativeService<B>>>;
 struct Inner<B> {
     services: HashMap<&'static str, ServiceSlot<B>>,
     fallback: Option<ServiceSlot<B>>,
+    async_interceptor: Option<Arc<dyn AsyncInterceptor>>,
 }
 
 // SAFETY analysis (no unsafe needed):
@@ -77,6 +81,7 @@ impl<B> RegistryService<B> {
     pub(super) fn new(
         services: HashMap<&'static str, BoxedNativeService<B>>,
         fallback: Option<BoxedNativeService<B>>,
+        async_interceptor: Option<Arc<dyn AsyncInterceptor>>,
     ) -> Self {
         let slotted: HashMap<&'static str, ServiceSlot<B>> = services
             .into_iter()
@@ -87,6 +92,7 @@ impl<B> RegistryService<B> {
             inner: Arc::new(Inner {
                 services: slotted,
                 fallback: fallback_slot,
+                async_interceptor,
             }),
         }
     }
@@ -138,10 +144,21 @@ where
             None
         };
 
+        let interceptor = self.inner.async_interceptor.clone();
+
         Box::pin(async move {
             // Path had no slash after stripping the leading '/' → unimplemented.
             if service_name.is_none() {
                 return Ok(unimplemented_response());
+            }
+
+            let mut req = req;
+            if let Some(ref interceptor) = interceptor {
+                let irequest = irequest_from_headers(req.headers());
+                match interceptor.intercept_async(irequest).await {
+                    Ok(updated) => apply_metadata_to_headers(&updated, req.headers_mut()),
+                    Err(status) => return Ok(status_response(&status)),
+                }
             }
 
             if let Some(mut boxed) = resolved {
@@ -167,6 +184,51 @@ where
 fn unimplemented_response() -> Response<NativeBody> {
     // gRPC status 12 = UNIMPLEMENTED
     let body = error_response_body(12, "unknown service");
+    let mut resp = Response::new(body);
+    *resp.status_mut() = http::StatusCode::OK;
+    let headers = grpc_response_headers();
+    for (k, v) in &headers {
+        resp.headers_mut().append(k.clone(), v.clone());
+    }
+    resp
+}
+
+/// Build a metadata-only `Request<()>` from incoming request headers.
+fn irequest_from_headers(headers: &HeaderMap) -> IRequest<()> {
+    let mut req = IRequest::new(());
+    let md = req.metadata_mut();
+    for (name, value) in headers.iter() {
+        let key = name.as_str();
+        if Metadata::is_binary_key(key) {
+            if let Ok(s) = value.to_str() {
+                if let Ok(raw) = Metadata::decode_wire_bin(s) {
+                    let _ = md.insert_bin(key, &raw);
+                }
+            }
+        } else if let Ok(s) = value.to_str() {
+            let _ = md.insert(key, s);
+        }
+    }
+    req
+}
+
+/// Merge the (possibly mutated) metadata of `req` back into `headers`.
+fn apply_metadata_to_headers(req: &IRequest<()>, headers: &mut HeaderMap) {
+    for (key, value) in req.metadata().to_wire() {
+        if let (Ok(name), Ok(val)) = (
+            http::HeaderName::from_bytes(key.as_bytes()),
+            http::HeaderValue::from_str(&value),
+        ) {
+            headers.remove(&name);
+            headers.append(name, val);
+        }
+    }
+}
+
+/// Build a gRPC error response from a `Status`, mirroring `unimplemented_response`.
+fn status_response(status: &oxirpc_core::rpc::Status) -> Response<NativeBody> {
+    let code = status.code.as_i32().max(0) as u32;
+    let body = error_response_body(code, &status.message);
     let mut resp = Response::new(body);
     *resp.status_mut() = http::StatusCode::OK;
     let headers = grpc_response_headers();

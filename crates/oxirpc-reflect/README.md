@@ -19,10 +19,10 @@ With optional features:
 ```toml
 [dependencies]
 # Enable the richer oxiproto-reflect DescriptorPool backend for the native service
-oxirpc-reflect = { version = "0.1.0", features = ["oxiproto"] }
+oxirpc-reflect = { version = "0.1.3", features = ["oxiproto"] }
 
 # Enable gRPC message compression on the native reflection service
-oxirpc-reflect = { version = "0.1.0", features = ["gzip", "zstd"] }
+oxirpc-reflect = { version = "0.1.3", features = ["gzip", "zstd"] }
 ```
 
 ## Quick Start

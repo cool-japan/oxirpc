@@ -400,3 +400,96 @@ async fn registry_accepts_native_body_request() {
         "grpc-status trailer must be present in registry response"
     );
 }
+
+// ─── async interceptor: inject + abort ────────────────────────────────────────
+
+#[tokio::test]
+async fn async_interceptor_injects_header_server() {
+    use oxirpc_core::interceptor::AsyncInterceptor;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    // A service that records whether it saw header `x-server-injected`.
+    #[derive(Clone)]
+    struct HeaderSpy {
+        saw: Arc<AtomicBool>,
+    }
+    impl NamedService for HeaderSpy {
+        const NAME: &'static str = "spy.Service";
+    }
+    impl Service<Request<tonic::body::Body>> for HeaderSpy {
+        type Response = Response<NativeBody>;
+        type Error = Infallible;
+        type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Infallible>> + Send>>;
+        fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: Request<tonic::body::Body>) -> Self::Future {
+            let saw = Arc::clone(&self.saw);
+            let present = req
+                .headers()
+                .get("x-server-injected")
+                .map(|v| v == "yes")
+                .unwrap_or(false);
+            Box::pin(async move {
+                saw.store(present, Ordering::SeqCst);
+                Ok(ok_native_response())
+            })
+        }
+    }
+
+    let saw = Arc::new(AtomicBool::new(false));
+    let spy = HeaderSpy {
+        saw: Arc::clone(&saw),
+    };
+
+    let interceptor = |mut req: oxirpc_core::message::Request<()>| async move {
+        req.metadata_mut()
+            .insert("x-server-injected", "yes")
+            .unwrap();
+        Ok::<_, oxirpc_core::rpc::Status>(req)
+    };
+
+    let registry = NativeServiceRegistry::new()
+        .add_service(spy)
+        .with_async_interceptor(Arc::new(interceptor) as Arc<dyn AsyncInterceptor>);
+    let mut svc = registry.into_service();
+
+    let req = Request::builder()
+        .uri("/spy.Service/Method")
+        .body(tonic::body::Body::default())
+        .expect("request");
+    let resp = svc.call(req).await.expect("infallible");
+    assert_eq!(resp.status(), http::StatusCode::OK);
+    assert!(
+        saw.load(Ordering::SeqCst),
+        "service must see the injected header"
+    );
+}
+
+#[tokio::test]
+async fn async_interceptor_abort_returns_status_server() {
+    use oxirpc_core::interceptor::AsyncInterceptor;
+    use oxirpc_core::status::StatusCode;
+    use std::sync::Arc;
+
+    let mock = MockService::new("mock.Service");
+    let interceptor = |_req: oxirpc_core::message::Request<()>| async move {
+        Err::<oxirpc_core::message::Request<()>, _>(oxirpc_core::rpc::Status::new(
+            StatusCode::PermissionDenied,
+            "denied",
+        ))
+    };
+    let registry = NativeServiceRegistry::new()
+        .add_service(mock)
+        .with_async_interceptor(Arc::new(interceptor) as Arc<dyn AsyncInterceptor>);
+    let mut svc = registry.into_service();
+
+    let resp = call_path(&mut svc, "/mock.Service/Method").await;
+    // Aborted by interceptor → PermissionDenied == 7 in trailers.
+    assert_eq!(
+        grpc_status_from_response(resp).await,
+        Some(7),
+        "interceptor abort must yield grpc-status 7"
+    );
+}

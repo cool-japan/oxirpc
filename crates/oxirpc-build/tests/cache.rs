@@ -1,11 +1,12 @@
 /// Integration tests for `oxirpc_build`'s incremental build cache.
 ///
 /// These tests exercise the cache read/write/invalidate contract using the
-/// same `$OUT_DIR/.oxirpc-cache/fds.bin` layout that the crate uses
+/// same `$OUT_DIR/.oxirpc-cache/fds-<hash>.bin` layout that the crate uses
 /// internally.  All file I/O uses temporary directories under
 /// [`std::env::temp_dir()`] with unique per-test subdirectories to avoid
 /// collisions between parallel test runs.
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -18,7 +19,20 @@ use prost_types::FileDescriptorSet;
 // ---------------------------------------------------------------------------
 
 const CACHE_SUBDIR: &str = ".oxirpc-cache";
-const CACHE_FILE: &str = "fds.bin";
+
+/// Mirror of `cache::cache_file_name` — the cache file name is keyed on a
+/// stable hash of the sorted proto paths so distinct proto sets compiled into
+/// the same `$OUT_DIR` stay isolated.
+fn cache_file_name(proto_files: &[&Path]) -> String {
+    let mut names: Vec<String> = proto_files
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    names.hash(&mut hasher);
+    format!("fds-{:016x}.bin", hasher.finish())
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -76,12 +90,13 @@ fn minimal_fds() -> FileDescriptorSet {
     FileDescriptorSet { file: vec![file] }
 }
 
-/// Write a [`FileDescriptorSet`] to the cache location inside `out_dir`.
-fn write_cache(out_dir: &Path, fds: &FileDescriptorSet) {
+/// Write a [`FileDescriptorSet`] to the cache location inside `out_dir`,
+/// keyed on `proto_files` exactly as the crate does.
+fn write_cache(out_dir: &Path, proto_files: &[&Path], fds: &FileDescriptorSet) {
     let cache_dir = out_dir.join(CACHE_SUBDIR);
     fs::create_dir_all(&cache_dir).expect("create cache dir");
     let bytes = fds.encode_to_vec();
-    fs::write(cache_dir.join(CACHE_FILE), bytes).expect("write cache");
+    fs::write(cache_dir.join(cache_file_name(proto_files)), bytes).expect("write cache");
 }
 
 /// Set the mtime of `path` (file or directory) to the given [`SystemTime`].
@@ -105,7 +120,9 @@ fn cache_try_load(
     proto_files: &[&Path],
     include_dirs: &[&Path],
 ) -> Option<FileDescriptorSet> {
-    let cache_path = out_dir.join(CACHE_SUBDIR).join(CACHE_FILE);
+    let cache_path = out_dir
+        .join(CACHE_SUBDIR)
+        .join(cache_file_name(proto_files));
     let cache_mtime = cache_path.metadata().ok()?.modified().ok()?;
 
     let input_mtime: Option<SystemTime> = proto_files
@@ -151,7 +168,7 @@ fn cache_write_and_hit() {
     let proto = write_proto(&dir, "greeter");
 
     let fds = minimal_fds();
-    write_cache(&dir, &fds);
+    write_cache(&dir, &[proto.as_path()], &fds);
 
     // Set proto and include-dir mtime to 60 s in the past.
     let past = SystemTime::now() - Duration::from_secs(60);
@@ -159,7 +176,9 @@ fn cache_write_and_hit() {
     set_mtime(&dir, past);
 
     // Set cache mtime to now (newer than proto).
-    let cache_path = dir.join(CACHE_SUBDIR).join(CACHE_FILE);
+    let cache_path = dir
+        .join(CACHE_SUBDIR)
+        .join(cache_file_name(&[proto.as_path()]));
     set_mtime(&cache_path, SystemTime::now());
 
     let result = cache_try_load(&dir, &[proto.as_path()], &[dir.as_path()]);
@@ -179,11 +198,13 @@ fn cache_invalidated_when_proto_newer() {
     let proto = write_proto(&dir, "service");
 
     let fds = minimal_fds();
-    write_cache(&dir, &fds);
+    write_cache(&dir, &[proto.as_path()], &fds);
 
     // Set cache mtime to 60 s in the past.
     let past = SystemTime::now() - Duration::from_secs(60);
-    let cache_path = dir.join(CACHE_SUBDIR).join(CACHE_FILE);
+    let cache_path = dir
+        .join(CACHE_SUBDIR)
+        .join(cache_file_name(&[proto.as_path()]));
     set_mtime(&cache_path, past);
 
     // Set proto mtime to now (newer than cache).
@@ -204,13 +225,15 @@ fn cache_roundtrip_preserves_fds_content() {
     let proto = write_proto(&dir, "roundtrip");
 
     let original = minimal_fds();
-    write_cache(&dir, &original);
+    write_cache(&dir, &[proto.as_path()], &original);
 
     // Set proto and include-dir mtime to the past; cache is fresh.
     let past = SystemTime::now() - Duration::from_secs(60);
     set_mtime(&proto, past);
     set_mtime(&dir, past);
-    let cache_path = dir.join(CACHE_SUBDIR).join(CACHE_FILE);
+    let cache_path = dir
+        .join(CACHE_SUBDIR)
+        .join(cache_file_name(&[proto.as_path()]));
     set_mtime(&cache_path, SystemTime::now());
 
     let loaded = cache_try_load(&dir, &[proto.as_path()], &[dir.as_path()])

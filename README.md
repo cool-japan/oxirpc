@@ -8,10 +8,10 @@ protoc), [OxiTLS](https://github.com/cool-japan/oxitls) (Pure-Rust TLS via rustl
 openssl/ring), and [OxiARC](https://github.com/cool-japan/oxiarc) (Pure-Rust gzip/zstd, replaces
 flate2/zstd-sys). The default feature closure is 100% Pure Rust and FFI-free.
 
-## Status: 0.1.2 — All milestones complete (2026-06-10)
+## Status: 0.1.3 — All milestones complete (2026-06-19)
 
-759 tests pass across 9 crates (all features). clippy clean (`-D warnings`).
-~28 000 lines of production Rust. All milestones M0–M8 complete.
+765 tests pass across 9 crates (all features). clippy clean (`-D warnings`).
+~28 945 lines of production Rust. All milestones M0–M8 complete.
 
 ```
 cargo add oxirpc --features "client,server,tls,health,reflect,web,gzip,zstd"
@@ -123,6 +123,30 @@ client and server without forking tonic.
 `oxiarc-zstd`. Wire-level `FLAG_COMPRESSED` framing in gRPC-Web codec. No
 `flate2`, no `zstd` C crate on any feature edge.
 
+**Async Interceptors (oxirpc-core, oxirpc-client, oxirpc-server) — v0.1.3**
+
+`AsyncInterceptor` is now fully wired on both sides. Client-side:
+`NativeChannelBuilder::with_async_interceptor` runs before every H2 stream is
+opened — inject metadata or abort with a `Status`. Server-side:
+`NativeServiceRegistry::with_async_interceptor` runs before the matched service
+handler — mutate incoming headers or return a gRPC error response. Closures
+returning a future implement `AsyncInterceptor` via a blanket impl, so no
+manual struct is needed.
+
+**Build cache isolation (oxirpc-build) — v0.1.3**
+
+`compile_to_fds` now stores each proto set's descriptor under
+`$OUT_DIR/.oxirpc-cache/fds-<hash>.bin` where `<hash>` is a stable hash of the
+sorted input paths. Multiple independent `compile_to_fds` calls sharing one
+`$OUT_DIR` no longer collide.
+
+**gRPC conformance harness (oxirpc) — v0.1.3**
+
+`tests/conformance.rs` implements `grpc.testing.TestService` (empty, unary,
+server/client/full-duplex streaming) and drives the upstream grpc-go interop
+client when `GRPC_GO_INTEROP_CLIENT` is set. CI without the Go toolchain skips
+gracefully.
+
 **Interceptors (oxirpc::interceptors)**
 
 Full interceptor library: `BearerAuth`, `Tracing`, `Deadline`, rate limiting,
@@ -163,7 +187,7 @@ The optional `aws-lc` feature enables `oxirpc-adapter-aws-lc` which pulls
 ## Testing
 
 ```bash
-cargo nextest run --all-features      # 759 tests (all features, v0.1.2)
+cargo nextest run --all-features      # 765 tests (all features, v0.1.3)
 ```
 
 Includes: unit tests, integration tests (TLS round-trip, gRPC-Web transport,

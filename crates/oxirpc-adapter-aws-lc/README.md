@@ -19,14 +19,14 @@ To actually obtain the provider you must opt in to the `aws-lc` feature (which b
 
 ```toml
 [dependencies]
-oxirpc-adapter-aws-lc = { version = "0.1.0", features = ["aws-lc"] }
+oxirpc-adapter-aws-lc = { version = "0.1.3", features = ["aws-lc"] }
 ```
 
 In practice you usually enable it transitively through the `oxirpc` facade, which wires it together with the `tls` feature:
 
 ```toml
 [dependencies]
-oxirpc = { version = "0.1.0", features = ["tls", "aws-lc"] }
+oxirpc = { version = "0.1.3", features = ["tls", "aws-lc"] }
 ```
 
 ## Quick Start
