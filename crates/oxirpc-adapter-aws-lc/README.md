@@ -12,21 +12,22 @@
 ```toml
 [dependencies]
 # Default: empty feature set — no C/FFI is compiled. `aws_lc_provider` is NOT available.
-oxirpc-adapter-aws-lc = "0.1.0"
+oxirpc-adapter-aws-lc = "0.2.0"
 ```
 
 To actually obtain the provider you must opt in to the `aws-lc` feature (which brings in C/FFI):
 
 ```toml
 [dependencies]
-oxirpc-adapter-aws-lc = { version = "0.1.3", features = ["aws-lc"] }
+oxirpc-adapter-aws-lc = { version = "0.2.0", features = ["aws-lc"] }
 ```
 
-In practice you usually enable it transitively through the `oxirpc` facade, which wires it together with the `tls` feature:
+In 0.2.0 the `aws-lc` feature was **removed** from the `oxirpc` facade. Depend on `oxirpc-adapter-aws-lc` directly (as above) and wire the provider into your rustls configs manually via `aws_lc_provider()`.
 
 ```toml
 [dependencies]
-oxirpc = { version = "0.1.3", features = ["tls", "aws-lc"] }
+# The aws-lc feature no longer exists on oxirpc — use oxirpc-adapter-aws-lc directly.
+oxirpc-adapter-aws-lc = { version = "0.2.0", features = ["aws-lc"] }
 ```
 
 ## Quick Start

@@ -13,10 +13,10 @@ Add to `[build-dependencies]` (this is a build-time crate):
 
 ```toml
 [build-dependencies]
-oxirpc-build = "0.1.0"
+oxirpc-build = "0.2.0"
 
 # All-in-one legacy codegen (message types + service stubs):
-oxirpc-build = { version = "0.1.3", features = ["legacy-tonic-codegen"] }
+oxirpc-build = { version = "0.2.0", features = ["legacy-tonic-codegen"] }
 ```
 
 ## Quick Start

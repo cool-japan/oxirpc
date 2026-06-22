@@ -49,9 +49,8 @@
 //! | `reflect` | gRPC server reflection (v1 + v1alpha) |
 //! | `health` | gRPC health checking protocol |
 //! | `web` | gRPC-Web bridge (HTTP/1.1 → gRPC) + CORS layer |
-//! | `aws-lc` | AWS-LC backed adapter (opt-in, enables FFI) |
 //! | `oxiproto` | OxiProto type-system bridge — `proto::OxiMessage`, `proto::OxiProtoError`, prost types |
-//! | `full` | All Pure-Rust sub-features (no `aws-lc`, no `oxiproto`) |
+//! | `full` | All Pure-Rust sub-features (no `oxiproto`) |
 //!
 //! ## Migrating from tonic
 //!
@@ -328,21 +327,6 @@ pub mod build {}
 #[cfg(feature = "compression")]
 pub mod compression {
     pub use oxirpc_core::compression::*;
-}
-
-/// aws-lc-rs backed rustls `CryptoProvider` for OxiRPC's TLS layer.
-///
-/// Provides [`aws_lc::aws_lc_provider`] which returns an
-/// `Arc<rustls::crypto::CryptoProvider>` backed by aws-lc-rs.  Pair with
-/// the `tls` feature to wire the provider into gRPC TLS configs.
-///
-/// **Note**: enabling this feature brings in C/FFI code via aws-lc-sys.
-/// The default closure of `oxirpc` remains 100% Pure Rust.
-///
-/// Enable with the `aws-lc` feature.
-#[cfg(feature = "aws-lc")]
-pub mod aws_lc {
-    pub use oxirpc_adapter_aws_lc::*;
 }
 
 /// Proto type system integration via [OxiProto](https://github.com/cool-japan/oxiproto).

@@ -8,10 +8,12 @@ protoc), [OxiTLS](https://github.com/cool-japan/oxitls) (Pure-Rust TLS via rustl
 openssl/ring), and [OxiARC](https://github.com/cool-japan/oxiarc) (Pure-Rust gzip/zstd, replaces
 flate2/zstd-sys). The default feature closure is 100% Pure Rust and FFI-free.
 
-## Status: 0.1.3 — All milestones complete (2026-06-19)
+## Status: 0.2.0 — Pure Rust Policy v2 L1 compliant (2026-06-22)
 
-765 tests pass across 9 crates (all features). clippy clean (`-D warnings`).
-~28 945 lines of production Rust. All milestones M0–M8 complete.
+677 tests pass across 9 crates (default features). clippy clean (`-D warnings`).
+All milestones M0–M8 complete. **Breaking change**: the `aws-lc` feature and
+`oxirpc::aws_lc` re-export have been removed from the facade. Use
+`oxirpc-adapter-aws-lc` directly if you need aws-lc-rs crypto.
 
 ```
 cargo add oxirpc --features "client,server,tls,health,reflect,web,gzip,zstd"
@@ -24,28 +26,32 @@ cargo add oxirpc --features "client,server,tls,health,reflect,web,gzip,zstd"
 | `client` | `ClientBuilder`, channel pool, load balancing (round-robin, weighted, pick-first), resilience |
 | `server` | `ServerBuilder`, middleware, compression layers |
 | `native` | Native HTTP/2 server with `NativeServiceRegistry` and streaming bidi |
-| `tls` | Pure-Rust TLS via OxiTLS (no ring, no openssl) |
+| `tls` | Pure-Rust TLS via OxiTLS 0.2.0 (no ring, no openssl) |
 | `gzip` | gRPC gzip message compression via `oxiarc-deflate` |
 | `zstd` | gRPC Zstandard compression via `oxiarc-zstd` |
 | `compression` | Legacy `OxiArcGzip` compress/decompress API |
 | `reflect` | gRPC server reflection v1 + v1alpha |
 | `health` | gRPC health checking protocol v1 |
 | `web` | gRPC-Web bridge (binary + base64 text mode, CORS) |
-| `aws-lc` | Optional aws-lc-rs crypto adapter (non-default, pulls FFI) |
 | `oxiproto` | OxiProto type system integration (path-dep, not on crates.io default) |
 | `full` | All Pure-Rust features (client + server + native + tls + reflect + web + health + gzip + zstd) |
 
 Default features: `[]` (zero deps beyond tonic + prost + tokio).
+
+> **Note (0.2.0):** The `aws-lc` feature has been removed from `oxirpc` facade.
+> If you need aws-lc-rs–backed TLS, add `oxirpc-adapter-aws-lc` as a direct
+> dependency with its `aws-lc` feature. This change makes every feature reachable
+> via `oxirpc --all-features` 100% Pure Rust (Pure Rust Policy v2 L1).
 
 ## Quick start
 
 ```toml
 # Cargo.toml
 [dependencies]
-oxirpc = { version = "0.1", features = ["client", "server", "tls", "health"] }
+oxirpc = { version = "0.2", features = ["client", "server", "tls", "health"] }
 
 [build-dependencies]
-oxirpc-build = "0.1"
+oxirpc-build = "0.2"
 ```
 
 ```rust,no_run
@@ -166,12 +172,14 @@ base64 text mode, compression-aware data frames, trailer frame synthesis.
 
 ## FFI audit
 
-Default features (`cargo tree -p oxirpc --edges normal`) contain zero occurrences of:
-`protoc`, `openssl`, `openssl-sys`, `ring`, `aws-lc-sys`, `native-tls`, `flate2`,
-`zstd` (C crate), `bzip2-sys`, `xz2`.
+Default features and `--all-features` on `cargo tree -p oxirpc --edges normal`
+contain zero occurrences of: `protoc`, `openssl`, `openssl-sys`, `ring`,
+`aws-lc-sys`, `native-tls`, `flate2`, `zstd` (C crate), `bzip2-sys`, `xz2`.
 
-The optional `aws-lc` feature enables `oxirpc-adapter-aws-lc` which pulls
-`aws-lc-sys`. This is explicitly non-default and must be opted into.
+**0.2.0 change:** The `aws-lc` feature has been removed from the facade entirely.
+The entire `--all-features` closure of `oxirpc` is now 100% Pure Rust
+(Pure Rust Policy v2 L1 compliant). To use aws-lc-rs, depend directly on
+`oxirpc-adapter-aws-lc` with its `aws-lc` feature.
 
 ## FFI eliminated
 
@@ -187,7 +195,8 @@ The optional `aws-lc` feature enables `oxirpc-adapter-aws-lc` which pulls
 ## Testing
 
 ```bash
-cargo nextest run --all-features      # 765 tests (all features, v0.1.3)
+cargo nextest run                     # 677 tests (default features, v0.2.0)
+cargo nextest run --all-features      # full suite including aws-lc adapter purity check
 ```
 
 Includes: unit tests, integration tests (TLS round-trip, gRPC-Web transport,

@@ -42,10 +42,10 @@ tonic-build = "0.14"
 **After (oxirpc):**
 ```toml
 [dependencies]
-oxirpc = { version = "0.1", features = ["client", "server", "health", "reflect", "web"] }
+oxirpc = { version = "0.2", features = ["client", "server", "health", "reflect", "web"] }
 
 [build-dependencies]
-oxirpc-build = "0.1"
+oxirpc-build = "0.2"
 ```
 
 ---
@@ -216,7 +216,7 @@ types and service stubs should either:
 
    ```toml
    [build-dependencies]
-   oxirpc-build = { version = "0.1", features = ["legacy-tonic-codegen"] }
+   oxirpc-build = { version = "0.2", features = ["legacy-tonic-codegen"] }
    ```
 
 The `legacy-tonic-codegen` feature restores the previous tonic-prost-build

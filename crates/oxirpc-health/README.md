@@ -11,10 +11,10 @@ Beyond raw status reporting, the crate models **Kubernetes probes** ([`ProbeType
 
 ```toml
 [dependencies]
-oxirpc-health = "0.1.0"
+oxirpc-health = "0.2.0"
 
 # With OxiARC-backed compression encodings on the health responses:
-oxirpc-health = { version = "0.1.3", features = ["gzip", "zstd"] }
+oxirpc-health = { version = "0.2.0", features = ["gzip", "zstd"] }
 ```
 
 ## Quick Start

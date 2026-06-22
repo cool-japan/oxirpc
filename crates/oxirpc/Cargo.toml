@@ -21,10 +21,9 @@ health      = ["dep:oxirpc-health"]
 compression = ["oxirpc-core/compression"]
 gzip        = ["oxirpc-core/gzip"]
 zstd        = ["oxirpc-core/zstd"]
-aws-lc      = ["dep:oxirpc-adapter-aws-lc", "oxirpc-adapter-aws-lc/aws-lc"]
 # Proto type system integration via OxiProto (path-dep; NOT in full — not on crates.io).
 oxiproto    = ["dep:oxiproto", "oxirpc-core/oxiproto"]
-# Convenience: enable all Pure-Rust sub-features (no aws-lc / no FFI).
+# Convenience: enable all Pure-Rust sub-features (no FFI).
 full = [
     "client",
     "server",
@@ -45,7 +44,6 @@ oxirpc-server           = { workspace = true, optional = true }
 oxirpc-reflect          = { workspace = true, optional = true }
 oxirpc-web              = { workspace = true, optional = true }
 oxirpc-health           = { workspace = true, optional = true }
-oxirpc-adapter-aws-lc   = { workspace = true, optional = true }
 oxiproto                = { workspace = true, optional = true }
 tonic          = { workspace = true }
 tonic-prost    = { workspace = true }

@@ -11,14 +11,14 @@ Like the rest of OxiRPC, the crate ships **two paths**. The simple path wraps [`
 
 ```toml
 [dependencies]
-oxirpc-web = "0.1.0"
+oxirpc-web = "0.2.0"
 ```
 
 With message compression enabled (OxiARC-backed):
 
 ```toml
 [dependencies]
-oxirpc-web = { version = "0.1.3", features = ["gzip", "zstd"] }
+oxirpc-web = { version = "0.2.0", features = ["gzip", "zstd"] }
 ```
 
 ## HTTP/1.1 requirement

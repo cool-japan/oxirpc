@@ -11,13 +11,13 @@ The crate re-exports tonic's request/response/status types for the current facad
 
 ```toml
 [dependencies]
-oxirpc-core = "0.1.0"
+oxirpc-core = "0.2.0"
 
 # With Pure-Rust TLS config helpers:
-oxirpc-core = { version = "0.1.3", features = ["tls"] }
+oxirpc-core = { version = "0.2.0", features = ["tls"] }
 
 # With gRPC message compression:
-oxirpc-core = { version = "0.1.3", features = ["gzip", "zstd"] }
+oxirpc-core = { version = "0.2.0", features = ["gzip", "zstd"] }
 ```
 
 ## Quick Start

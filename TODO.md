@@ -1,8 +1,11 @@
 # OxiRPC Project TODO
 
-## Status — v0.1.3 released 2026-06-19
-Pure-Rust gRPC stack. 765 tests pass (all features); clippy clean (`-D warnings`);
-rustdoc clean; default closure is FFI-free. All milestones M0–M8 complete.
+## Status — v0.2.0 (2026-06-22)
+Pure-Rust gRPC stack. 677 tests pass (default features), all-features nextest run
+in progress; clippy clean (`-D warnings`); rustdoc clean; default closure is FFI-free.
+All milestones M0–M8 complete. Pure Rust Policy v2 L1 compliant: `aws-lc` and `pkcs11`
+feature paths removed from the facade (`oxirpc`); `oxirpc-adapter-aws-lc` remains as
+standalone opt-in workspace crate. oxitls upgraded to 0.2.0.
 All sub-crates operational: core (TLS via OxiTLS, native StatusCode/Metadata/
 grpc-timeout/CompressionEncoding+Encoding via OxiARC, AsyncInterceptor blanket impl),
 build (no protoc; compile_to_fds with hash-keyed cache isolation, mod attrs,
