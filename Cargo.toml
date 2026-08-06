@@ -13,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2021"
 rust-version = "1.89"
 authors = ["COOLJAPAN OU (Team Kitasan)"]
@@ -23,14 +23,14 @@ description = "Pure-Rust gRPC stack — no protoc, no openssl, no ring by defaul
 
 [workspace.dependencies]
 # workspace internal
-oxirpc-core             = { path = "crates/oxirpc-core",             version = "0.2.1" }
-oxirpc-build            = { path = "crates/oxirpc-build",            version = "0.2.1" }
-oxirpc-client           = { path = "crates/oxirpc-client",           version = "0.2.1" }
-oxirpc-server           = { path = "crates/oxirpc-server",           version = "0.2.1" }
-oxirpc-reflect          = { path = "crates/oxirpc-reflect",          version = "0.2.1" }
-oxirpc-web              = { path = "crates/oxirpc-web",              version = "0.2.1" }
-oxirpc-health           = { path = "crates/oxirpc-health",           version = "0.2.1" }
-oxirpc-adapter-aws-lc   = { path = "crates/oxirpc-adapter-aws-lc",  version = "0.2.1" }
+oxirpc-core             = { path = "crates/oxirpc-core",             version = "0.2.2" }
+oxirpc-build            = { path = "crates/oxirpc-build",            version = "0.2.2" }
+oxirpc-client           = { path = "crates/oxirpc-client",           version = "0.2.2" }
+oxirpc-server           = { path = "crates/oxirpc-server",           version = "0.2.2" }
+oxirpc-reflect          = { path = "crates/oxirpc-reflect",          version = "0.2.2" }
+oxirpc-web              = { path = "crates/oxirpc-web",              version = "0.2.2" }
+oxirpc-health           = { path = "crates/oxirpc-health",           version = "0.2.2" }
+oxirpc-adapter-aws-lc   = { path = "crates/oxirpc-adapter-aws-lc",  version = "0.2.2" }
 
 # tonic 0.14 (no "prost" feature; use codegen + transport)
 # CRITICAL: do NOT enable deflate/gzip/zstd — those pull flate2/zstd
