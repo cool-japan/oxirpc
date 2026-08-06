@@ -21,6 +21,16 @@ health      = ["dep:oxirpc-health"]
 compression = ["oxirpc-core/compression"]
 gzip        = ["oxirpc-core/gzip"]
 zstd        = ["oxirpc-core/zstd"]
+# HTTP/3 (M8): pure-Rust gRPC-over-QUIC client + server (OxiQUIC + `h3`).
+http3       = [
+    "client",
+    "server",
+    "native",
+    "tls",
+    "oxirpc-client/http3",
+    "oxirpc-server/http3",
+    "oxirpc-core/http3",
+]
 # Proto type system integration via OxiProto (path-dep; NOT in full — not on crates.io).
 oxiproto    = ["dep:oxiproto", "oxirpc-core/oxiproto"]
 # Convenience: enable all Pure-Rust sub-features (no FFI).
@@ -35,6 +45,7 @@ full = [
     "compression",
     "gzip",
     "zstd",
+    "http3",
 ]
 
 [dependencies]
@@ -79,6 +90,8 @@ oxirpc-client  = { path = "../oxirpc-client" }
 rustls-pki-types = { workspace = true }
 futures-util   = { workspace = true }
 http-body      = { workspace = true }
+bytes          = { workspace = true }
+oxitls-rcgen   = { workspace = true }
 
 [[test]]
 name = "native_server_e2e"
@@ -109,6 +122,21 @@ required-features = ["native", "health"]
 name = "proto_types"
 path = "tests/proto_types.rs"
 required-features = ["oxiproto"]
+
+[[test]]
+name = "h3_e2e"
+path = "tests/h3_e2e.rs"
+required-features = ["http3", "native", "health", "client"]
+
+[[example]]
+name = "client_server_native"
+path = "examples/client_server_native.rs"
+required-features = ["client", "server", "native", "health"]
+
+[[example]]
+name = "http3_client_server"
+path = "examples/http3_client_server.rs"
+required-features = ["http3", "native", "health", "client"]
 
 [[bench]]
 name = "interceptor_chain"

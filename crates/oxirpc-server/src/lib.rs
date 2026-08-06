@@ -87,6 +87,18 @@ pub mod native_registry;
 #[cfg(feature = "native")]
 pub use native_registry::{NativeServiceRegistry, RegistryService};
 
+/// Native HTTP/3 (gRPC-over-QUIC) transport via OxiQUIC + `h3` (requires `http3`).
+#[cfg(feature = "http3")]
+pub mod native_transport_h3;
+
+#[cfg(feature = "http3")]
+pub use native_transport_h3::{bind_h3_endpoint, serve_native_h3_with_service};
+
+/// Re-export of the QUIC transport types needed to drive the HTTP/3 server
+/// entry points (requires `http3`).
+#[cfg(feature = "http3")]
+pub use oxiquic_transport::{ServerEndpoint, TransportConfig};
+
 use std::net::SocketAddr;
 #[cfg(feature = "tls")]
 use std::sync::Arc;
@@ -682,6 +694,56 @@ impl ServerBuilder {
             Some(rx),
         )
         .await
+    }
+
+    /// Bind `bind_addr` as a QUIC endpoint and serve a [`NativeServiceRegistry`]
+    /// over HTTP/3 (gRPC-over-QUIC).
+    ///
+    /// `server_cfg` must be a QUIC-capable rustls [`ServerConfig`](rustls::ServerConfig)
+    /// built from [`oxirpc_core::tls::server_config_h3`]. Bind to port `0` for an
+    /// OS-assigned port and use
+    /// [`serve_native_registry_h3_with_endpoint`](Self::serve_native_registry_h3_with_endpoint)
+    /// when the assigned port must be observed.
+    ///
+    /// Requires the `http3` cargo feature.
+    #[cfg(feature = "http3")]
+    pub async fn serve_native_registry_h3(
+        self,
+        bind_addr: std::net::SocketAddr,
+        server_cfg: Arc<rustls::ServerConfig>,
+        registry: crate::native_registry::NativeServiceRegistry,
+    ) -> Result<(), OxiRpcError> {
+        let endpoint = native_transport_h3::bind_h3_endpoint(
+            bind_addr,
+            server_cfg,
+            oxiquic_transport::TransportConfig::default(),
+        )
+        .await?;
+        self.serve_native_registry_h3_with_endpoint(endpoint, registry, None)
+            .await
+    }
+
+    /// Serve a [`NativeServiceRegistry`] over HTTP/3 from a pre-bound QUIC
+    /// `ServerEndpoint`.
+    ///
+    /// Binding the endpoint separately lets the caller read the OS-assigned port
+    /// via `endpoint.local_addr()` before serving. `shutdown` optionally stops
+    /// the accept loop when it fires.
+    ///
+    /// Requires the `http3` cargo feature.
+    #[cfg(feature = "http3")]
+    pub async fn serve_native_registry_h3_with_endpoint(
+        self,
+        endpoint: oxiquic_transport::ServerEndpoint,
+        registry: crate::native_registry::NativeServiceRegistry,
+        shutdown: Option<tokio::sync::watch::Receiver<()>>,
+    ) -> Result<(), OxiRpcError> {
+        let prefs = oxirpc_core::ServerCompressionPrefs {
+            send: self.send_encoding.into_iter().collect(),
+            accept: self.accept_encoding,
+        };
+        let svc = CompressionPrefsLayer::new(prefs).layer(registry.into_service());
+        native_transport_h3::serve_native_h3_with_service(endpoint, svc, shutdown).await
     }
 }
 

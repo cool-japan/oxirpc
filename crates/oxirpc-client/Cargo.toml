@@ -18,6 +18,15 @@ tls = [
     "dep:hyper-util",
     "oxirpc-core/tls",
 ]
+# HTTP/3 (M8): pure-Rust gRPC-over-QUIC client channel via OxiQUIC + `h3`.
+http3 = [
+    "tls",
+    "dep:h3",
+    "dep:oxiquic-h3",
+    "dep:oxiquic-transport",
+    "dep:oxiquic-crypto",
+    "oxirpc-core/http3",
+]
 
 [dependencies]
 oxirpc-core  = { workspace = true }
@@ -47,6 +56,22 @@ workspace = true
 optional = true
 
 [dependencies.hyper-util]
+workspace = true
+optional = true
+
+[dependencies.h3]
+workspace = true
+optional = true
+
+[dependencies.oxiquic-h3]
+workspace = true
+optional = true
+
+[dependencies.oxiquic-transport]
+workspace = true
+optional = true
+
+[dependencies.oxiquic-crypto]
 workspace = true
 optional = true
 

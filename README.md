@@ -8,12 +8,15 @@ protoc), [OxiTLS](https://github.com/cool-japan/oxitls) (Pure-Rust TLS via rustl
 openssl/ring), and [OxiARC](https://github.com/cool-japan/oxiarc) (Pure-Rust gzip/zstd, replaces
 flate2/zstd-sys). The default feature closure is 100% Pure Rust and FFI-free.
 
-## Status: 0.2.0 — Pure Rust Policy v2 L1 compliant (2026-06-22)
+## Status: 0.2.1 — Pure Rust Policy v2 L1 compliant
 
-677 tests pass across 9 crates (default features). clippy clean (`-D warnings`).
-All milestones M0–M8 complete. **Breaking change**: the `aws-lc` feature and
-`oxirpc::aws_lc` re-export have been removed from the facade. Use
-`oxirpc-adapter-aws-lc` directly if you need aws-lc-rs crypto.
+702 tests pass across 9 crates (default features; 801 with `--all-features`,
+including the HTTP/3 loopback E2E suite). clippy clean
+(`-D warnings`). All milestones M0–M8 complete, including HTTP/3 (gRPC-over-QUIC)
+behind the opt-in `http3` feature — see [HTTP/3](#http3-grpc-over-quic) below.
+**Breaking change (0.2.0):** the `aws-lc` feature and `oxirpc::aws_lc` re-export
+have been removed from the facade. Use `oxirpc-adapter-aws-lc` directly if you need
+aws-lc-rs crypto.
 
 ```
 cargo add oxirpc --features "client,server,tls,health,reflect,web,gzip,zstd"
@@ -26,7 +29,8 @@ cargo add oxirpc --features "client,server,tls,health,reflect,web,gzip,zstd"
 | `client` | `ClientBuilder`, channel pool, load balancing (round-robin, weighted, pick-first), resilience |
 | `server` | `ServerBuilder`, middleware, compression layers |
 | `native` | Native HTTP/2 server with `NativeServiceRegistry` and streaming bidi |
-| `tls` | Pure-Rust TLS via OxiTLS 0.2.0 (no ring, no openssl) |
+| `tls` | Pure-Rust TLS via OxiTLS 0.3.0 (no ring, no openssl) |
+| `http3` | Pure-Rust HTTP/3 (gRPC-over-QUIC) client + server via OxiQUIC + `h3` (implies `client`+`server`+`native`+`tls`) |
 | `gzip` | gRPC gzip message compression via `oxiarc-deflate` |
 | `zstd` | gRPC Zstandard compression via `oxiarc-zstd` |
 | `compression` | Legacy `OxiArcGzip` compress/decompress API |
@@ -34,7 +38,7 @@ cargo add oxirpc --features "client,server,tls,health,reflect,web,gzip,zstd"
 | `health` | gRPC health checking protocol v1 |
 | `web` | gRPC-Web bridge (binary + base64 text mode, CORS) |
 | `oxiproto` | OxiProto type system integration (path-dep, not on crates.io default) |
-| `full` | All Pure-Rust features (client + server + native + tls + reflect + web + health + gzip + zstd) |
+| `full` | All Pure-Rust features (client + server + native + tls + http3 + reflect + web + health + gzip + zstd) |
 
 Default features: `[]` (zero deps beyond tonic + prost + tokio).
 
@@ -42,6 +46,36 @@ Default features: `[]` (zero deps beyond tonic + prost + tokio).
 > If you need aws-lc-rs–backed TLS, add `oxirpc-adapter-aws-lc` as a direct
 > dependency with its `aws-lc` feature. This change makes every feature reachable
 > via `oxirpc --all-features` 100% Pure Rust (Pure Rust Policy v2 L1).
+
+## HTTP/3 (gRPC-over-QUIC)
+
+Enable the `http3` feature for a 100% Pure-Rust gRPC-over-QUIC client and server,
+built on [OxiQUIC](https://github.com/cool-japan/oxiquic) and the hyperium `h3`
+crate. HTTP/3 rides on QUIC, which is TLS-1.3-only and negotiates the `"h3"` ALPN,
+so its TLS configs **must** come from the `*_h3` helpers — they use OxiQUIC's
+crypto provider (the generic pure provider cannot derive QUIC packet keys).
+
+```rust,no_run
+use std::sync::Arc;
+use rustls::RootCertStore;
+use oxirpc::http3::{client_config_h3_arc, H3ChannelBuilder};
+
+# async fn ex(roots: RootCertStore) -> Result<(), oxirpc::OxiRpcError> {
+// Client: dial one endpoint over QUIC and issue gRPC calls.
+let tls = client_config_h3_arc(roots)?;
+let channel = H3ChannelBuilder::new()
+    .addr("127.0.0.1:4433".parse().unwrap())
+    .server_name("localhost")
+    .tls(tls)
+    .build()?;
+// channel.call(request).await ...
+# let _ = channel; Ok(()) }
+```
+
+Server side, serve a `NativeServiceRegistry` over HTTP/3 with
+`ServerBuilder::serve_native_registry_h3` (or `_with_endpoint` to observe the
+bound port and wire graceful shutdown). The default build stays QUIC-free —
+`cargo tree -p oxirpc --edges normal | grep oxiquic` is empty without `http3`.
 
 ## Quick start
 
@@ -195,8 +229,8 @@ The entire `--all-features` closure of `oxirpc` is now 100% Pure Rust
 ## Testing
 
 ```bash
-cargo nextest run                     # 677 tests (default features, v0.2.0)
-cargo nextest run --all-features      # full suite including aws-lc adapter purity check
+cargo nextest run                     # 702 tests (default features)
+cargo nextest run --all-features      # 801 tests: full suite including HTTP/3 E2E + aws-lc adapter purity check
 ```
 
 Includes: unit tests, integration tests (TLS round-trip, gRPC-Web transport,

@@ -1,0 +1,9 @@
+# OxiRPC rustfmt configuration.
+#
+# Deliberately minimal: the codebase already conforms to stock rustfmt
+# defaults (verified via `cargo fmt --all --check` before this file was
+# added), so this file exists mainly to pin the edition explicitly for
+# plain `rustfmt` invocations outside of `cargo fmt` (which otherwise reads
+# it from each crate's own Cargo.toml) rather than to change formatting
+# behaviour.
+edition = "2021"

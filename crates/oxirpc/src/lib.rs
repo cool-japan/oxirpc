@@ -232,6 +232,60 @@ pub mod prelude {
 #[cfg(feature = "tls")]
 pub use oxirpc_core::tls;
 
+/// HTTP/3 (gRPC-over-QUIC) support — pure Rust via OxiQUIC + the `h3` crate.
+///
+/// Enable with the `http3` feature. HTTP/3 rides on QUIC, which is TLS-1.3-only
+/// (RFC 9001) and negotiates the `"h3"` ALPN token (RFC 9114 §3.3). All TLS
+/// configs used here **must** be built with the `*_h3` helpers below — they use
+/// the OxiQUIC crypto provider whose cipher suites carry the `quic: Some(..)`
+/// key schedule required to derive QUIC packet keys. Configs built with the
+/// generic pure provider (`tls::client_config` / `tls::server_config`) have
+/// `quic: None` and will fail the handshake.
+///
+/// # Client
+///
+/// `H3Channel` / `H3ChannelBuilder` dial a single endpoint over QUIC and
+/// multiplex gRPC calls onto the resulting HTTP/3 connection.
+///
+/// # Server
+///
+/// Serve a `NativeServiceRegistry` over HTTP/3 with
+/// [`ServerBuilder::serve_native_registry_h3`](oxirpc_server::ServerBuilder::serve_native_registry_h3)
+/// (bind + serve) or
+/// [`serve_native_registry_h3_with_endpoint`](oxirpc_server::ServerBuilder::serve_native_registry_h3_with_endpoint)
+/// (pre-bound endpoint, for observing an OS-assigned port and graceful shutdown).
+///
+/// # Example
+///
+/// ```rust,no_run
+/// # #[cfg(feature = "http3")]
+/// # async fn ex() -> Result<(), oxirpc_core::OxiRpcError> {
+/// use rustls::RootCertStore;
+/// use oxirpc::http3::{client_config_h3_arc, H3ChannelBuilder};
+///
+/// let roots = RootCertStore::empty();
+/// let tls = client_config_h3_arc(roots)?;
+/// let channel = H3ChannelBuilder::new()
+///     .addr("127.0.0.1:4433".parse().unwrap())
+///     .server_name("localhost")
+///     .tls(tls)
+///     .build()?;
+/// # let _ = channel;
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(feature = "http3")]
+pub mod http3 {
+    pub use oxirpc_client::native_channel::h3::{execute_h3, H3Channel, H3ChannelBuilder};
+    pub use oxirpc_client::H3Connection;
+    pub use oxirpc_core::tls::{
+        client_config_h3, client_config_h3_arc, server_config_h3, server_config_h3_arc,
+    };
+    pub use oxirpc_server::native_transport_h3::{bind_h3_endpoint, serve_native_h3_with_service};
+    #[doc(no_inline)]
+    pub use oxirpc_server::{ServerEndpoint, TransportConfig};
+}
+
 /// gRPC server reflection helpers (v1 + v1alpha).
 ///
 /// Enable with the `reflect` feature. Wraps [`oxirpc_reflect`]'s

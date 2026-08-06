@@ -118,8 +118,12 @@ async fn call_path(
     svc: &mut oxirpc_server::RegistryService<tonic::body::Body>,
     path: &str,
 ) -> Response<NativeBody> {
+    // A valid gRPC content-type is required since `RegistryService::call`
+    // rejects anything else with HTTP 415 before it ever reaches routing —
+    // these tests exercise routing/dispatch, not content-type validation.
     let req = Request::builder()
         .uri(path)
+        .header("content-type", "application/grpc")
         .body(tonic::body::Body::default())
         .expect("request");
     svc.call(req).await.expect("infallible")
@@ -222,6 +226,58 @@ async fn path_parsing_rejects_no_slash() {
         Some(12),
         "path with no method slash must return UNIMPLEMENTED"
     );
+}
+
+// ─── 5b. wrong_content_type_returns_415_without_dispatching ──────────────────
+
+/// Regression test: a request whose `content-type` does not begin with
+/// `application/grpc` must be rejected with HTTP 415 *before* it reaches any
+/// registered service — not silently routed and fed into the frame decoder.
+#[tokio::test]
+async fn wrong_content_type_returns_415_without_dispatching() {
+    let mock = MockService::new("mock.Service");
+    let counter = Arc::clone(&mock.call_count);
+
+    let registry = NativeServiceRegistry::new().add_service(mock);
+    let mut svc = registry.into_service();
+
+    let req = Request::builder()
+        .uri("/mock.Service/SomeMethod")
+        .header("content-type", "text/html")
+        .body(tonic::body::Body::default())
+        .expect("request");
+    let resp = svc.call(req).await.expect("infallible");
+
+    assert_eq!(
+        resp.status(),
+        http::StatusCode::UNSUPPORTED_MEDIA_TYPE,
+        "non-gRPC content-type must yield HTTP 415"
+    );
+    assert_eq!(
+        counter.load(Ordering::SeqCst),
+        0,
+        "the registered service must never be called for a non-gRPC request"
+    );
+}
+
+/// Same as above, but with no `content-type` header at all (a bare plain-HTTP
+/// client, or a health-check probe that never sets one).
+#[tokio::test]
+async fn missing_content_type_returns_415_without_dispatching() {
+    let mock = MockService::new("mock.Service");
+    let counter = Arc::clone(&mock.call_count);
+
+    let registry = NativeServiceRegistry::new().add_service(mock);
+    let mut svc = registry.into_service();
+
+    let req = Request::builder()
+        .uri("/mock.Service/SomeMethod")
+        .body(tonic::body::Body::default())
+        .expect("request");
+    let resp = svc.call(req).await.expect("infallible");
+
+    assert_eq!(resp.status(), http::StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    assert_eq!(counter.load(Ordering::SeqCst), 0);
 }
 
 // ─── 6. name_iter_returns_all_registered ─────────────────────────────────────
@@ -457,6 +513,7 @@ async fn async_interceptor_injects_header_server() {
 
     let req = Request::builder()
         .uri("/spy.Service/Method")
+        .header("content-type", "application/grpc")
         .body(tonic::body::Body::default())
         .expect("request");
     let resp = svc.call(req).await.expect("infallible");

@@ -241,8 +241,14 @@ impl From<StatusCode> for GrpcStatusCode {
 /// any value starting with `"application/grpc"` (per gRPC spec section on
 /// content-type negotiation). Returns `false` for `"application/json"` and
 /// other non-gRPC types.
+///
+/// This delegates to [`crate::wire::header::is_grpc_content_type`], the
+/// canonical implementation used by the native H2/H3 transports to actually
+/// validate requests and responses. Kept here (rather than removed outright)
+/// as part of this module's documented one-release backward-compatibility
+/// shim — see the module docs.
 pub fn is_grpc_content_type(ct: &str) -> bool {
-    ct.starts_with(GRPC_CONTENT_TYPE_PREFIX)
+    crate::wire::header::is_grpc_content_type(ct)
 }
 
 #[cfg(test)]

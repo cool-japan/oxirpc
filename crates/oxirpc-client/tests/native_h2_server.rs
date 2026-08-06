@@ -254,6 +254,170 @@ async fn drain_request(req: Request<h2::RecvStream>) {
     }
 }
 
+// ── spawn_no_trailer_server ───────────────────────────────────────────────────
+
+/// Spawn a server that sends a `200` HEADERS frame, one gRPC data frame, then
+/// ends the stream via `send_data(_, true)` WITHOUT ever sending a `grpc-status`
+/// trailer. This is a protocol violation (or a non-gRPC-aware proxy in front of
+/// a broken backend) that the client must surface as an error rather than a
+/// silently successful empty stream.
+pub async fn spawn_no_trailer_server(response_payload: Bytes) -> ServerHandle {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    let task = tokio::spawn(async move {
+        loop {
+            let (stream, _) = match listener.accept().await {
+                Ok(v) => v,
+                Err(_) => break,
+            };
+            let payload = response_payload.clone();
+            tokio::spawn(async move {
+                handle_no_trailer(stream, payload).await;
+            });
+        }
+    });
+
+    ServerHandle { addr, task }
+}
+
+async fn handle_no_trailer(stream: TcpStream, payload: Bytes) {
+    let mut conn = match h2::server::handshake(stream).await {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    while let Some(result) = conn.accept().await {
+        let (req, mut respond) = match result {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        drain_request(req).await;
+
+        let response = Response::builder()
+            .status(200)
+            .header("content-type", "application/grpc+proto")
+            .body(())
+            .unwrap();
+
+        let mut send_stream = match respond.send_response(response, false) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+
+        let frame = grpc_frame(&payload);
+        if send_stream.send_data(frame, false).is_err() {
+            return;
+        }
+        // End the stream via a plain END_STREAM data frame — no HEADERS
+        // trailer frame is ever sent, so `grpc-status` is never present.
+        let _ = send_stream.send_data(Bytes::new(), true);
+    }
+}
+
+// ── spawn_wrong_content_type_server ───────────────────────────────────────────
+
+/// Spawn a server that responds to every request with a `200` HEADERS frame
+/// whose `content-type` is `text/html` (simulating a reverse-proxy error page
+/// or a plain HTTP endpoint reachable at the same address), followed by a
+/// data frame and normal-looking gRPC trailers. The client must reject this
+/// on the content-type check alone, never attempting to decode the body as
+/// gRPC frames.
+pub async fn spawn_wrong_content_type_server() -> ServerHandle {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    let task = tokio::spawn(async move {
+        loop {
+            let (stream, _) = match listener.accept().await {
+                Ok(v) => v,
+                Err(_) => break,
+            };
+            tokio::spawn(async move {
+                handle_wrong_content_type(stream).await;
+            });
+        }
+    });
+
+    ServerHandle { addr, task }
+}
+
+async fn handle_wrong_content_type(stream: TcpStream) {
+    let mut conn = match h2::server::handshake(stream).await {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    while let Some(result) = conn.accept().await {
+        let (req, mut respond) = match result {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        drain_request(req).await;
+
+        let response = Response::builder()
+            .status(200)
+            .header("content-type", "text/html")
+            .body(())
+            .unwrap();
+
+        let mut send_stream = match respond.send_response(response, false) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+
+        let _ = send_stream.send_data(Bytes::from_static(b"<html>not gRPC</html>"), false);
+
+        let mut trailers = http::HeaderMap::new();
+        trailers.insert("grpc-status", http::HeaderValue::from_static("0"));
+        let _ = send_stream.send_trailers(trailers);
+    }
+}
+
+// ── spawn_missing_content_type_server ─────────────────────────────────────────
+
+/// Spawn a server that responds with a `200` HEADERS frame carrying **no**
+/// `content-type` header at all, then ends the stream immediately
+/// (trailers-only shape). Simulates a bare HTTP server or a load balancer
+/// health-check responder with no notion of gRPC.
+pub async fn spawn_missing_content_type_server() -> ServerHandle {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    let task = tokio::spawn(async move {
+        loop {
+            let (stream, _) = match listener.accept().await {
+                Ok(v) => v,
+                Err(_) => break,
+            };
+            tokio::spawn(async move {
+                handle_missing_content_type(stream).await;
+            });
+        }
+    });
+
+    ServerHandle { addr, task }
+}
+
+async fn handle_missing_content_type(stream: TcpStream) {
+    let mut conn = match h2::server::handshake(stream).await {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    while let Some(result) = conn.accept().await {
+        let (req, mut respond) = match result {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        drain_request(req).await;
+
+        // No content-type header at all — end_stream = true (trailers-only shape).
+        let response = Response::builder().status(200).body(()).unwrap();
+        let _ = respond.send_response(response, true);
+    }
+}
+
 // ── spawn_header_echo_server ────────────────────────────────────────────────
 
 /// Spawn a server that echoes the request header `echo_name` value back in a

@@ -19,6 +19,7 @@ use tokio_util::codec::Decoder as _;
 
 use super::body::{body_channel, NativeBody, NativeBodySender};
 use super::connection::{h2_error_to_oxirpc, Connection, StreamSlot};
+use super::content_type::validate_grpc_response_content_type;
 use super::intercept::{apply_metadata_to_headers, request_from_headers};
 use oxirpc_core::interceptor::AsyncInterceptor;
 
@@ -32,9 +33,12 @@ use oxirpc_core::interceptor::AsyncInterceptor;
 /// 2. Open an H2 stream (send headers).
 /// 3. If there is a request body, spawn a task to pump it.
 /// 4. Await the response future.
-/// 5. If `grpc-status` is present in the *initial* response headers
+/// 5. Validate the response `content-type`; a non-gRPC value (or its absence)
+///    is reported as a [`OxiRpcError::Transport`] immediately, since the peer
+///    has not demonstrated that it speaks gRPC at all.
+/// 6. If `grpc-status` is present in the *initial* response headers
 ///    (trailers-only response), map it to an error immediately.
-/// 6. Otherwise spawn a response-body pump task and return the response.
+/// 7. Otherwise spawn a response-body pump task and return the response.
 ///
 /// The `_slot` is moved in and dropped with the returned `NativeBody`,
 /// ensuring the stream counter is decremented when the body is consumed.
@@ -104,6 +108,17 @@ async fn do_execute(
     let response = response_future.await.map_err(h2_error_to_oxirpc)?;
     let (head, recv_stream) = response.into_parts();
 
+    // ── Content-Type validation ───────────────────────────────────────────────
+    // A response whose content-type does not indicate gRPC is not a gRPC
+    // response at all — e.g. a reverse-proxy error page, a load-balancer
+    // health page, or a plain HTTP endpoint reachable at the same address.
+    // Decoding its body as length-prefixed gRPC frames would produce a
+    // confusing "invalid gRPC frame" error; report the real cause instead.
+    if let Err(e) = validate_grpc_response_content_type(&head.headers, head.status) {
+        body_task.abort();
+        return Err(e);
+    }
+
     // ── Trailers-only detection ───────────────────────────────────────────────
     if head.headers.contains_key("grpc-status") {
         // Server sent grpc-status in the initial HEADERS frame (trailers-only).
@@ -127,6 +142,7 @@ async fn do_execute(
 
     // ── Spawn response-body pump task ─────────────────────────────────────────
     let (body_tx, response_body) = body_channel(16);
+    let initial_status = head.status;
 
     // `slot` is moved into the response pump task — it will be dropped when the
     // response body is fully consumed, decrementing the stream counter.
@@ -137,7 +153,7 @@ async fn do_execute(
         // the JoinHandle stays alive while we pump the response. When the pump
         // finishes, body_task drops and its internal task gets cancelled.
         std::mem::drop(body_task);
-        pump_response(recv_stream, body_tx).await;
+        pump_response(recv_stream, body_tx, initial_status).await;
     });
 
     let response = http::Response::from_parts(head, response_body);
@@ -196,8 +212,17 @@ async fn send_body(
 /// frames to `body_tx`.
 ///
 /// At EOF, reads trailers and checks `grpc-status`. If status != 0, sends an
-/// error on the channel.
-async fn pump_response(mut recv_stream: h2::RecvStream, body_tx: NativeBodySender) {
+/// error on the channel. If the stream ends without ever sending a
+/// `grpc-status` trailer at all — a violation of the gRPC wire protocol,
+/// whether because of a broken/non-gRPC server or because `initial_status`
+/// (the HTTP status from the initial response headers) was itself an error —
+/// this is also surfaced as an error rather than silently reported as a
+/// successful empty stream.
+async fn pump_response(
+    mut recv_stream: h2::RecvStream,
+    body_tx: NativeBodySender,
+    initial_status: http::StatusCode,
+) {
     let mut decoder = FrameDecoder::default();
     let mut buf = BytesMut::new();
 
@@ -244,19 +269,49 @@ async fn pump_response(mut recv_stream: h2::RecvStream, body_tx: NativeBodySende
     }
 
     // ── Read trailers ─────────────────────────────────────────────────────────
-    let trailers: Option<HeaderMap> = recv_stream.trailers().await.unwrap_or(None);
-    if let Some(ref t) = trailers {
-        let status = parse_grpc_status(t).unwrap_or(2 /* UNKNOWN */);
-        if status != 0 {
-            let message = grpc_message(t);
+    // A genuine h2 error while reading the trailers block (RST_STREAM, connection
+    // error, malformed HEADERS) is distinct from a clean stream close with no
+    // trailers frame at all (`Ok(None)`) — map it through `h2_error_to_oxirpc` so
+    // the caller sees the real transport cause instead of a generic "missing
+    // trailer" message indistinguishable from a non-compliant-but-alive server.
+    let trailers: Option<HeaderMap> = match recv_stream.trailers().await {
+        Ok(t) => t,
+        Err(e) => {
+            body_tx.send_error(h2_error_to_oxirpc(e)).await;
+            return;
+        }
+    };
+    match trailers {
+        Some(t) => {
+            let status = parse_grpc_status(&t).unwrap_or(2 /* UNKNOWN */);
+            if status != 0 {
+                let message = grpc_message(&t);
+                body_tx
+                    .send_error(OxiRpcError::from_status_code(
+                        StatusCode::from_i32_lossy(status),
+                        message,
+                    ))
+                    .await;
+            }
+            // status == 0: OK — channel close signals EOF to the consumer.
+        }
+        None => {
+            // The stream ended without ever sending a `grpc-status` trailer —
+            // per the gRPC spec, every response (even a data-carrying one) must
+            // terminate with one. Treat this as a failed RPC instead of letting
+            // it look like a successful empty stream to the caller.
+            let message = if initial_status.is_success() {
+                "stream ended without a grpc-status trailer".to_owned()
+            } else {
+                format!(
+                    "stream ended without a grpc-status trailer (http status {})",
+                    initial_status.as_u16()
+                )
+            };
             body_tx
-                .send_error(OxiRpcError::from_status_code(
-                    StatusCode::from_i32_lossy(status),
-                    message,
-                ))
+                .send_error(OxiRpcError::from_status_code(StatusCode::Unknown, message))
                 .await;
         }
-        // status == 0: OK — channel close signals EOF to the consumer.
     }
     // body_tx drops here, closing the channel and signalling EOF to the consumer.
 }

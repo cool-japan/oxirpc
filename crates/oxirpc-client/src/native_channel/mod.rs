@@ -28,6 +28,9 @@ pub mod builder;
 pub mod call;
 pub mod channel;
 pub mod connection;
+pub(crate) mod content_type;
+#[cfg(feature = "http3")]
+pub mod h3;
 pub(crate) mod intercept;
 
 pub use body::{body_channel, NativeBody, NativeBodySender};
@@ -35,3 +38,5 @@ pub use builder::NativeChannelBuilder;
 pub use channel::NativeChannel;
 #[cfg(feature = "tls")]
 pub use connection::TlsConfig;
+#[cfg(feature = "http3")]
+pub use h3::{execute_h3, H3Channel, H3ChannelBuilder, H3Connection};

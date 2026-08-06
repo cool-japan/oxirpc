@@ -81,6 +81,36 @@ fn tls_module_accessible() {
     );
 }
 
+// ─── http3 feature ───────────────────────────────────────────────────────────
+
+#[cfg(feature = "http3")]
+#[test]
+fn http3_module_accessible() {
+    use rustls::RootCertStore;
+
+    // The h3 TLS config helpers must be reachable and advertise the "h3" ALPN.
+    let roots = RootCertStore::empty();
+    let cfg = oxirpc::http3::client_config_h3(roots).expect("client_config_h3 must build");
+    assert_eq!(
+        cfg.alpn_protocols,
+        vec![b"h3".to_vec()],
+        "h3 client config must advertise the \"h3\" ALPN"
+    );
+
+    // The client channel builder types are reachable and enforce required fields.
+    let err = oxirpc::http3::H3ChannelBuilder::new()
+        .build()
+        .expect_err("H3ChannelBuilder without addr/server_name/tls must fail");
+    assert!(matches!(err, oxirpc::OxiRpcError::Build(_)), "got {err:?}");
+
+    // Server entry points are reachable as items (signature reference only).
+    let _serve = oxirpc::http3::serve_native_h3_with_service::<
+        oxirpc_server::RegistryService,
+        oxirpc_core::wire::NativeBody,
+    >;
+    let _bind = oxirpc::http3::bind_h3_endpoint;
+}
+
 // ─── compression feature ─────────────────────────────────────────────────────
 
 #[cfg(feature = "compression")]

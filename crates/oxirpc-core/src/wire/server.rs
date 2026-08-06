@@ -15,6 +15,7 @@ use crate::wire::body::{body_channel, NativeBody, NativeBodySender};
 use crate::wire::codec::MessagePipeline;
 use crate::wire::frame::{
     Frame, FrameDecoder, FrameOptions, FLAG_COMPRESSED, FLAG_UNCOMPRESSED, GRPC_FRAME_HEADER_LEN,
+    MAX_FRAME_SIZE_DEFAULT,
 };
 use crate::wire::trailer::percent_encode_message;
 use crate::{OxiRpcError, StatusCode};
@@ -47,7 +48,9 @@ pub fn encode_grpc_message<T: Message>(msg: &T) -> Result<Bytes, WireError> {
 ///
 /// # Errors
 ///
-/// - [`OxiRpcError::Transport`] — if the bytes are too short for a gRPC frame header or payload.
+/// - [`OxiRpcError::Transport`] — if the bytes are too short for a gRPC frame header or payload,
+///   or if the claimed payload length exceeds [`MAX_FRAME_SIZE_DEFAULT`] (also covers the
+///   arithmetic-overflow case on 32-bit/wasm32 targets, since the size guard runs first).
 /// - [`OxiRpcError::Compression`] — if the compressed flag is set (flag byte != 0x00).
 /// - [`OxiRpcError::Proto`] — if the prost decode fails.
 pub fn decode_grpc_message<T: Message + Default>(data: Bytes) -> Result<T, OxiRpcError> {
@@ -66,7 +69,25 @@ pub fn decode_grpc_message<T: Message + Default>(data: Bytes) -> Result<T, OxiRp
         ));
     }
     let payload_len = u32::from_be_bytes([data[1], data[2], data[3], data[4]]) as usize;
-    let total = GRPC_FRAME_HEADER_LEN + payload_len;
+    // DoS / overflow guard: reject frames claiming more than the configured maximum
+    // BEFORE doing any arithmetic on the attacker-controlled length. This must run
+    // before `GRPC_FRAME_HEADER_LEN + payload_len` — on a 32-bit or wasm32 target
+    // `usize` is only 32 bits wide, so a maliciously large `payload_len` (up to
+    // `u32::MAX`) could otherwise overflow the addition and yield a `total` smaller
+    // than `GRPC_FRAME_HEADER_LEN`, which would then panic when slicing below.
+    if payload_len > MAX_FRAME_SIZE_DEFAULT {
+        return Err(OxiRpcError::from(WireError::FrameTooLarge {
+            max: MAX_FRAME_SIZE_DEFAULT,
+            got: payload_len,
+        }));
+    }
+    let total = GRPC_FRAME_HEADER_LEN
+        .checked_add(payload_len)
+        .ok_or_else(|| {
+            OxiRpcError::Transport(format!(
+            "gRPC frame length overflow: header {GRPC_FRAME_HEADER_LEN} + payload {payload_len}"
+        ))
+        })?;
     if data.len() < total {
         return Err(OxiRpcError::Transport(format!(
             "gRPC frame payload truncated: need {total}, have {}",
@@ -85,7 +106,8 @@ pub fn decode_grpc_message<T: Message + Default>(data: Bytes) -> Result<T, OxiRp
 ///
 /// # Errors
 ///
-/// - [`OxiRpcError::Transport`] — frame too short or payload truncated.
+/// - [`OxiRpcError::Transport`] — frame too short, payload truncated, or the claimed
+///   payload length exceeds [`MAX_FRAME_SIZE_DEFAULT`].
 /// - [`OxiRpcError::Compression`] — compressed flag set but encoding is identity,
 ///   or decompression backend failed.
 /// - [`OxiRpcError::Proto`] — prost decode failure.
@@ -101,7 +123,22 @@ pub fn decode_grpc_message_with_encoding<T: Message + Default>(
     }
     let compressed = data[0] != FLAG_UNCOMPRESSED;
     let payload_len = u32::from_be_bytes([data[1], data[2], data[3], data[4]]) as usize;
-    let total = GRPC_FRAME_HEADER_LEN + payload_len;
+    // See the identical guard in `decode_grpc_message` above: reject oversized
+    // frames before any arithmetic on the attacker-controlled length, so the
+    // subsequent addition can never overflow `usize` on 32-bit/wasm32 targets.
+    if payload_len > MAX_FRAME_SIZE_DEFAULT {
+        return Err(OxiRpcError::from(WireError::FrameTooLarge {
+            max: MAX_FRAME_SIZE_DEFAULT,
+            got: payload_len,
+        }));
+    }
+    let total = GRPC_FRAME_HEADER_LEN
+        .checked_add(payload_len)
+        .ok_or_else(|| {
+            OxiRpcError::Transport(format!(
+            "gRPC frame length overflow: header {GRPC_FRAME_HEADER_LEN} + payload {payload_len}"
+        ))
+        })?;
     if data.len() < total {
         return Err(OxiRpcError::Transport(format!(
             "gRPC frame payload truncated: need {total}, have {}",
@@ -591,5 +628,117 @@ fn oxirpc_error_to_grpc_status(e: &OxiRpcError) -> (u32, String) {
             (StatusCode::Internal as u32, msg.clone())
         }
         OxiRpcError::Proto(msg) => (StatusCode::Internal as u32, msg.clone()),
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Minimal prost message used only to exercise the generic `T` parameter
+    /// of `decode_grpc_message[_with_encoding]` in tests below.
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    struct TestMessage {
+        #[prost(string, tag = "1")]
+        value: String,
+    }
+
+    /// Build a raw gRPC frame header (flag + big-endian u32 length) with no
+    /// payload bytes following it — simulates an attacker sending only the
+    /// 5-byte header with a claimed length that is never backed by data.
+    fn header_only(payload_len: u32) -> Bytes {
+        let mut buf = BytesMut::with_capacity(GRPC_FRAME_HEADER_LEN);
+        buf.put_u8(FLAG_UNCOMPRESSED);
+        buf.put_u32(payload_len);
+        buf.freeze()
+    }
+
+    #[test]
+    fn decode_grpc_message_round_trip_ok() {
+        let msg = TestMessage {
+            value: "hello".to_owned(),
+        };
+        let framed = encode_grpc_message(&msg).unwrap();
+        let decoded: TestMessage = decode_grpc_message(framed).unwrap();
+        assert_eq!(decoded, msg);
+    }
+
+    #[test]
+    fn decode_grpc_message_rejects_oversized_length_without_panic() {
+        // Claimed length is one byte over the configured maximum. Regression
+        // guard: this must be rejected via the size check, not by computing
+        // `GRPC_FRAME_HEADER_LEN + payload_len` and slicing on it.
+        let data = header_only((MAX_FRAME_SIZE_DEFAULT + 1) as u32);
+        let err = decode_grpc_message::<TestMessage>(data).unwrap_err();
+        match err {
+            OxiRpcError::Transport(msg) => assert!(
+                msg.contains("too large"),
+                "expected a 'too large' message, got: {msg}"
+            ),
+            other => panic!("expected OxiRpcError::Transport, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_grpc_message_rejects_u32_max_length_without_panic() {
+        // A maximal u32 length prefix (~4 GiB). On a 32-bit or wasm32 target,
+        // `GRPC_FRAME_HEADER_LEN + payload_len` would overflow `usize` here if
+        // computed without a prior size guard, producing a wrapped `total`
+        // smaller than `GRPC_FRAME_HEADER_LEN` and panicking on the subsequent
+        // slice. The size guard must reject this before any such arithmetic.
+        let data = header_only(u32::MAX);
+        let err = decode_grpc_message::<TestMessage>(data).unwrap_err();
+        assert!(
+            matches!(err, OxiRpcError::Transport(_)),
+            "expected OxiRpcError::Transport, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn decode_grpc_message_truncated_payload_still_reported_cleanly() {
+        // Length is within the allowed maximum but the buffer doesn't actually
+        // contain that many payload bytes — must be a clean truncation error,
+        // never a panic.
+        let mut data = BytesMut::from(header_only(16).as_ref());
+        data.put_slice(&[0u8; 4]); // only 4 of the claimed 16 payload bytes
+        let err = decode_grpc_message::<TestMessage>(data.freeze()).unwrap_err();
+        match err {
+            OxiRpcError::Transport(msg) => assert!(
+                msg.contains("truncated"),
+                "expected a 'truncated' message, got: {msg}"
+            ),
+            other => panic!("expected OxiRpcError::Transport, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_grpc_message_with_encoding_rejects_oversized_length_without_panic() {
+        let data = header_only((MAX_FRAME_SIZE_DEFAULT + 1) as u32);
+        let err =
+            decode_grpc_message_with_encoding::<TestMessage>(data, CompressionEncoding::Identity)
+                .unwrap_err();
+        match err {
+            OxiRpcError::Transport(msg) => assert!(
+                msg.contains("too large"),
+                "expected a 'too large' message, got: {msg}"
+            ),
+            other => panic!("expected OxiRpcError::Transport, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn decode_grpc_message_with_encoding_rejects_u32_max_length_without_panic() {
+        let data = header_only(u32::MAX);
+        let err =
+            decode_grpc_message_with_encoding::<TestMessage>(data, CompressionEncoding::Identity)
+                .unwrap_err();
+        assert!(
+            matches!(err, OxiRpcError::Transport(_)),
+            "expected OxiRpcError::Transport, got {err:?}"
+        );
     }
 }

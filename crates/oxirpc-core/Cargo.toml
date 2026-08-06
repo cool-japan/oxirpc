@@ -24,6 +24,10 @@ gzip = ["dep:oxiarc-deflate"]
 zstd = ["dep:oxiarc-zstd"]
 # OxiProto error bridge: enables From<oxiproto::OxiProtoError> for OxiRpcError.
 oxiproto = ["dep:oxiproto"]
+# HTTP/3 (M8): TLS 1.3 + ALPN "h3" configs built on the OxiQUIC crypto provider.
+# Pure Rust; only the QUIC-capable crypto provider is added here (the h3/transport
+# layers live in oxirpc-client / oxirpc-server).
+http3 = ["tls", "dep:oxiquic-crypto"]
 
 [dependencies]
 tonic = { workspace = true }
@@ -66,8 +70,13 @@ optional = true
 workspace = true
 optional = true
 
+[dependencies.oxiquic-crypto]
+workspace = true
+optional = true
+
 [dev-dependencies]
 rcgen     = { workspace = true }
+oxitls-rcgen = { workspace = true }
 tokio     = { workspace = true, features = ["full"] }
 criterion = { workspace = true }
 prost     = { workspace = true }

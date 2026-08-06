@@ -1,21 +1,24 @@
 # OxiRPC Project TODO
 
-## Status — v0.2.0 (2026-06-22)
-Pure-Rust gRPC stack. 677 tests pass (default features), all-features nextest run
-in progress; clippy clean (`-D warnings`); rustdoc clean; default closure is FFI-free.
-All milestones M0–M8 complete. Pure Rust Policy v2 L1 compliant: `aws-lc` and `pkcs11`
+## Status — v0.2.1 (Unreleased)
+Pure-Rust gRPC stack. 702 tests pass (default features; 801 with `--all-features`); clippy
+clean (`-D warnings`); rustdoc clean; default closure is FFI-free.
+All milestones M0–M8 complete, including the M8 HTTP/3 (gRPC-over-QUIC) initiative
+(R1-R6, see the Production-Readiness Backlog section below) behind the opt-in
+`http3` feature. Pure Rust Policy v2 L1 compliant: `aws-lc` and `pkcs11`
 feature paths removed from the facade (`oxirpc`); `oxirpc-adapter-aws-lc` remains as
-standalone opt-in workspace crate. oxitls upgraded to 0.2.0.
-All sub-crates operational: core (TLS via OxiTLS, native StatusCode/Metadata/
-grpc-timeout/CompressionEncoding+Encoding via OxiARC, AsyncInterceptor blanket impl),
-build (no protoc; compile_to_fds with hash-keyed cache isolation, mod attrs,
-btree_map/bytes, FDS path), client (cloneable config + load-balancing + resilience +
-xDS/ADS, async interceptor wired), server (config + bound-listener serving + native
-registry, async interceptor wired), reflect (v1+v1alpha), web (gRPC-Web layer +
+standalone opt-in workspace crate. oxitls pinned at 0.3.0.
+All sub-crates operational: core (TLS via OxiTLS incl. HTTP/3 `*_h3` configs, native
+StatusCode/Metadata/grpc-timeout/CompressionEncoding+Encoding via OxiARC,
+AsyncInterceptor blanket impl), build (no protoc; compile_to_fds with hash-keyed
+cache isolation, mod attrs, btree_map/bytes, FDS path), client (cloneable config +
+load-balancing + resilience + xDS/ADS + native HTTP/3 channel, async interceptor
+wired), server (config + bound-listener serving + native registry + native HTTP/3
+transport, async interceptor wired), reflect (v1+v1alpha), web (gRPC-Web layer +
 native frame codec + CorsPolicy), health (v1 + status mirror/bulk ops), interceptors
 (auth/tracing/deadline/rate-limiting/metrics/retry/circuit-breaker), facade (prelude,
-full feature, version(), gRPC conformance harness). Goal: replace tonic with native
-Pure Rust gRPC implementation.
+full feature, version(), gRPC conformance harness, http3 module). Goal: replace
+tonic with native Pure Rust gRPC implementation.
 
 ## Milestones
 
@@ -115,12 +118,16 @@ Pure Rust gRPC implementation.
   - **Risk:** Path-dep; gated by prerequisite `cargo build -p oxirpc-core --features oxiproto`. Deeper integration (reflect DescriptorPool, build codegen) is a follow-up.
 - [x] Coordinate with OxiARC for compression
 - [x] Coordinate with OxiTLS for TLS configuration
-- [ ] HTTP/3 support deferred to OxiQuic
+- [x] HTTP/3 support via OxiQUIC — IMPLEMENTED 2026-07-17, see R1-R6 in the
+      Production-Readiness Backlog section below (`http3` feature).
 
 ## Open Questions
 1. Tonic 1.0 / fork policy: when tonic 1.0 lands, reassess facade vs native
 2. gRPC compression: OxiARC-backed gzip/zstd behind feature flag
-3. HTTP/3 / QUIC: wait for OxiQuic or accept bounded-FFI adapter
+3. ~~HTTP/3 / QUIC: wait for OxiQuic or accept bounded-FFI adapter~~ RESOLVED
+   2026-07-17: native HTTP/3 (gRPC-over-QUIC) shipped behind the `http3`
+   feature via OxiQUIC (`oxiquic-h3`/`-transport`/`-crypto`) + the hyperium
+   `h3` crate. No FFI adapter needed.
 4. xDS integration scope and timeline
 
 ## Proposed follow-ups
@@ -134,5 +141,46 @@ Pure Rust gRPC implementation.
 
 - [x] oxiproto-reflect DescriptorPool in oxirpc-reflect — swap static file-descriptor handling to `oxiproto_reflect::DescriptorPool::parse_from_bytes`; requires reading oxiproto-reflect API carefully (reflect:56) (done 2026-05-30)
 - [x] oxiproto-build for proto parsing in oxirpc-build — route proto compilation through oxiproto-build as shared parser; codegen change, separate round (build:54) (done 2026-05-30)
-- [ ] HTTP/3 support via OxiQuic — substantial new transport on `oxiquic-h3` v0.0.0; large net-new code, plan as its own initiative (root:105)
-  - **DEFERRED: large initiative; plan separately once oxiquic-h3 matures**
+- [x] HTTP/3 support via OxiQuic — substantial new transport on `oxiquic-h3`
+  (root:105). **IMPLEMENTED 2026-07-17** — see R1-R6 in the
+  Production-Readiness Backlog section below; this entry is superseded by
+  that section and kept only for history.
+
+
+---
+
+<!-- production-readiness-backlog 2026-07-16 -->
+## Production-Readiness Backlog — 2026-07-16
+
+_Consolidated from static audit + Opus adversarial bug-hunt (48 verified defects across noffi) + baseline nextest/clippy + design investigation. See `../NOFFI_PRODUCTION_BACKLOG.md` for the full cross-project list and severity/model legend. Not implemented; no commits._
+
+**Confirmed bugs — Opus-verified:**
+- [x] **A · med** `oxirpc-client/src/native_channel/call.rs:247` — response pump treats stream ending without grpc-status trailer (or non-200 w/o grpc-status) as successful empty stream instead of error. R2/N0.
+  **FIXED**: `pump_response` now takes the initial HTTP status and, when the
+  trailers block never arrives, returns `OxiRpcError::from_status_code(StatusCode::Unknown, ..)`
+  instead of a silent successful close. Mirrored on the HTTP/3 path
+  (`native_channel/h3/call.rs`). Regression test: `stream_ending_without_trailer_is_an_error`.
+- [x] **S · med** `oxirpc-core/src/wire/server.rs:69` — `decode_grpc_message` computes `header_len + payload_len` from attacker u32 with no max-size guard → usize overflow / slice panic on 32-bit/wasm32. R1/N0.
+  **FIXED**: an explicit `payload_len > MAX_FRAME_SIZE_DEFAULT` bound is
+  checked before any arithmetic, followed by a `checked_add` overflow guard
+  and a truncation check; duplicated in `decode_grpc_message_with_encoding`.
+**HTTP/3 transport (feature `http3`; Pure Rust via OxiQUIC 0.2.0 `oxiquic-{h3,transport,crypto}` + h3 0.0.8; TLS uses `quic_crypto_provider()`) — IMPLEMENTED 2026-07-17:**
+- [x] **R1** workspace deps + `http3` feature stanzas across core/client/server/facade + facade `http3` module/docs. Default build verified QUIC-free (`cargo tree --edges normal | grep oxiquic` empty).
+- [x] **R2** `client_config_h3`/`server_config_h3` (+`_arc`): ALPN `"h3"`, TLS 1.3-only, `oxiquic_crypto::quic_crypto_provider()`. Unit-tested (ALPN, Ed25519 round-trip, invalid-PEM rejection).
+- [x] **R3** client H3 transport: `native_channel::h3::{H3Connection, execute_h3, H3Channel, H3ChannelBuilder}`; `split()` full-duplex; strips `te`; trailers-only detection; `grpc-status` → typed error.
+- [x] **R4** server H3 transport: `native_transport_h3::{serve_native_h3_with_service, bind_h3_endpoint}` + `ServerBuilder::serve_native_registry_h3[_with_endpoint]`; accept loop; sends `grpc-status`/`grpc-message` trailers + FIN; ALPN enforcement; graceful shutdown.
+- [x] **R5** E2E loopback tests (`crates/oxirpc/tests/h3_e2e.rs`): unary, server-streaming, client-streaming/bidi echo, deadline/timeout, graceful shutdown, ALPN-mismatch rejection. All green.
+- [x] **R6** CHANGELOG/README/TODO updated; `SECURITY.md` + `CONTRIBUTING.md` added; feature matrix (default, http3, full) builds clean.
+- [ ] (optional follow-up) h3-vs-h2 throughput/latency benchmark. **Attempted
+  and reverted**: reproducibly hit what looks like an `H3Channel` connection-
+  staleness bug (`.ready()` succeeds, a later separate `.call()` fails with
+  "driven connection driver closed before stream was opened", independent of
+  `idle_timeout`) — see CHANGELOG.md "Known issues" under [0.2.1]. A
+  Wave 3 hygiene pass re-checked (by code inspection, not by re-running the
+  benchmark) the originally-suspected `H3Connection::connect`/`ClientEndpoint`
+  lifetime lead and ruled it out: the socket is `Arc`-shared into the driver
+  task independently of the endpoint, so dropping the endpoint after
+  `connect()` cannot be the cause. Root cause is still open and most likely
+  needs a standalone `oxiquic`-only repro to localize before this benchmark
+  is re-attempted. Not a hygiene-wave task — tracked for the functional-bug
+  backlog.

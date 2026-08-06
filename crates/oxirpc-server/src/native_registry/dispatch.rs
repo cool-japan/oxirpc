@@ -4,6 +4,14 @@
 //! service name by stripping the leading `/` then taking the part before the
 //! next `/`.
 //!
+//! Before any of that, the request's `content-type` header is validated: per
+//! the gRPC-over-HTTP/2 spec, a request whose `content-type` does not begin
+//! with `application/grpc` is rejected with HTTP 415 (Unsupported Media
+//! Type) rather than being routed to a service — see the internal
+//! `reject_non_grpc_content_type` helper. This keeps a plain HTTP client, a
+//! health-check probe, or a misconfigured reverse proxy from being fed
+//! straight into the gRPC frame decoder.
+//!
 //! Dispatch result:
 //! 1. Service found  →  clone its `BoxedNativeService` and call it.
 //! 2. Not found, fallback set  →  call the fallback.
@@ -22,6 +30,7 @@ use oxirpc_core::interceptor::AsyncInterceptor;
 use oxirpc_core::message::Request as IRequest;
 use oxirpc_core::metadata::Metadata;
 use oxirpc_core::wire::{
+    header::is_grpc_content_type,
     server::{error_response_body, grpc_response_headers},
     NativeBody,
 };
@@ -115,6 +124,17 @@ where
     }
 
     fn call(&mut self, req: Request<B>) -> Self::Future {
+        // Reject non-gRPC requests before doing any dispatch work (route
+        // lookup, interceptor invocation, or handing the body to the frame
+        // decoder). Per the gRPC-over-HTTP/2 spec: "If Content-Type does not
+        // begin with 'application/grpc', gRPC servers SHOULD respond with
+        // HTTP status of 415 (Unsupported Media Type)." A plain HTTP client,
+        // a health-check probe, or a misconfigured reverse proxy must never
+        // reach the frame decoder or a service handler.
+        if let Some(rejection) = reject_non_grpc_content_type(req.headers()) {
+            return Box::pin(async move { Ok(rejection) });
+        }
+
         let path = req.uri().path();
 
         // Parse: strip leading '/', then split on '/' to get service name.
@@ -177,6 +197,49 @@ where
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/// Validate the incoming request's `content-type` header against the gRPC
+/// wire format.
+///
+/// Returns `Some(response)` — an HTTP 415 rejection built by
+/// [`unsupported_media_type_response`] — when the header is missing or does
+/// not satisfy [`is_grpc_content_type`]; returns `None` when the request
+/// should proceed to normal dispatch.
+fn reject_non_grpc_content_type(headers: &HeaderMap) -> Option<Response<NativeBody>> {
+    let content_type = headers
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok());
+    if content_type.is_some_and(is_grpc_content_type) {
+        return None;
+    }
+    Some(unsupported_media_type_response(content_type))
+}
+
+/// Build a plain-text HTTP 415 response rejecting a non-gRPC `content-type`.
+///
+/// Per the gRPC-over-HTTP/2 spec: "This will prevent other HTTP/2 clients
+/// from interpreting a gRPC error response, which uses status 200 (OK), as
+/// successful." The body is plain text (not gRPC-framed) and carries no
+/// `grpc-status` trailer — unlike [`unimplemented_response`] — because the
+/// peer has not demonstrated that it speaks gRPC at all.
+fn unsupported_media_type_response(actual: Option<&str>) -> Response<NativeBody> {
+    let message = match actual {
+        Some(ct) => format!(
+            "invalid gRPC request content-type {ct:?}; expected 'application/grpc' \
+             or a variant such as 'application/grpc+proto'"
+        ),
+        None => "missing content-type header; gRPC requests require \
+                  'content-type: application/grpc[+proto|+json]'"
+            .to_owned(),
+    };
+    let mut resp = Response::new(NativeBody::once(Bytes::from(message)));
+    *resp.status_mut() = http::StatusCode::UNSUPPORTED_MEDIA_TYPE;
+    resp.headers_mut().insert(
+        http::header::CONTENT_TYPE,
+        http::HeaderValue::from_static("text/plain; charset=utf-8"),
+    );
+    resp
+}
+
 /// Build a gRPC UNIMPLEMENTED (status code 12) response using native wire helpers.
 ///
 /// Returns HTTP 200 with `grpc-status: 12` in the response trailers, as required
@@ -236,4 +299,159 @@ fn status_response(status: &oxirpc_core::rpc::Status) -> Response<NativeBody> {
         resp.headers_mut().append(k.clone(), v.clone());
     }
     resp
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ─── reject_non_grpc_content_type ─────────────────────────────────────────
+
+    #[test]
+    fn accepts_bare_and_variant_grpc_content_types() {
+        for ct in [
+            "application/grpc",
+            "application/grpc+proto",
+            "application/grpc+json",
+        ] {
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                http::header::CONTENT_TYPE,
+                ct.parse().expect("header value"),
+            );
+            assert!(
+                reject_non_grpc_content_type(&headers).is_none(),
+                "{ct:?} must be accepted, not rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_missing_content_type_header() {
+        let headers = HeaderMap::new();
+        let resp =
+            reject_non_grpc_content_type(&headers).expect("missing content-type must be rejected");
+        assert_eq!(resp.status(), http::StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    #[test]
+    fn rejects_plain_http_content_type() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            "text/html".parse().expect("header value"),
+        );
+        let resp = reject_non_grpc_content_type(&headers).expect("text/html must be rejected");
+        assert_eq!(resp.status(), http::StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        // The peer never demonstrated it speaks gRPC — no grpc-status trailer.
+        assert!(
+            !resp.headers().contains_key("grpc-status"),
+            "a 415 rejection must not carry a grpc-status header"
+        );
+    }
+
+    #[test]
+    fn rejects_json_content_type() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            "application/json".parse().expect("header value"),
+        );
+        assert!(reject_non_grpc_content_type(&headers).is_some());
+    }
+
+    #[tokio::test]
+    async fn unsupported_media_type_response_body_names_the_actual_content_type() {
+        use http_body_util::BodyExt as _;
+
+        let resp = unsupported_media_type_response(Some("text/html"));
+        assert_eq!(resp.status(), http::StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        let collected = resp.into_body().collect().await.expect("collect body");
+        let text = String::from_utf8_lossy(&collected.to_bytes()).into_owned();
+        assert!(
+            text.contains("text/html"),
+            "rejection message must name the actual content-type, got: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn unsupported_media_type_response_body_explains_missing_header() {
+        use http_body_util::BodyExt as _;
+
+        let resp = unsupported_media_type_response(None);
+        assert_eq!(resp.status(), http::StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        let collected = resp.into_body().collect().await.expect("collect body");
+        let text = String::from_utf8_lossy(&collected.to_bytes()).into_owned();
+        assert!(
+            text.contains("missing"),
+            "rejection message must explain the header is missing, got: {text}"
+        );
+    }
+
+    // ─── RegistryService::call end-to-end (via the tower Service impl) ────────
+
+    #[tokio::test]
+    async fn call_rejects_request_with_wrong_content_type_before_dispatch() {
+        use std::convert::Infallible;
+        use std::future::Future;
+        use std::pin::Pin;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        use std::task::{Context, Poll};
+        use tonic::server::NamedService;
+
+        /// A mock service that records whether it was ever called.
+        #[derive(Clone)]
+        struct RecordingService(Arc<AtomicBool>);
+
+        impl NamedService for RecordingService {
+            const NAME: &'static str = "mock.Service";
+        }
+
+        impl Service<Request<tonic::body::Body>> for RecordingService {
+            type Response = Response<NativeBody>;
+            type Error = Infallible;
+            type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Infallible>> + Send>>;
+
+            fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Infallible>> {
+                Poll::Ready(Ok(()))
+            }
+
+            fn call(&mut self, _req: Request<tonic::body::Body>) -> Self::Future {
+                self.0.store(true, Ordering::SeqCst);
+                Box::pin(async move { Ok(Response::new(NativeBody::empty())) })
+            }
+        }
+
+        let called = Arc::new(AtomicBool::new(false));
+        let mut services: HashMap<&'static str, ServiceSlot<tonic::body::Body>> = HashMap::new();
+        services.insert(
+            RecordingService::NAME,
+            Arc::new(Mutex::new(BoxedNativeService::new(RecordingService(
+                Arc::clone(&called),
+            )))),
+        );
+        let mut svc = RegistryService {
+            inner: Arc::new(Inner {
+                services,
+                fallback: None,
+                async_interceptor: None,
+            }),
+        };
+
+        let req = Request::builder()
+            .uri("/mock.Service/Method")
+            .header("content-type", "text/plain")
+            .body(tonic::body::Body::default())
+            .expect("request");
+
+        let resp = svc.call(req).await.expect("infallible");
+        assert_eq!(resp.status(), http::StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        assert!(
+            !called.load(Ordering::SeqCst),
+            "a non-gRPC request must never reach the service handler"
+        );
+    }
 }

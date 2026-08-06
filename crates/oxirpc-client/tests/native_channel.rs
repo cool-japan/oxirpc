@@ -6,8 +6,9 @@
 // Include the native h2 server fixture directly in this test crate.
 mod native_h2_server;
 use native_h2_server::{
-    spawn_goaway_server, spawn_header_echo_server, spawn_streaming_server,
-    spawn_trailer_only_server, spawn_unary_ok_server,
+    spawn_goaway_server, spawn_header_echo_server, spawn_missing_content_type_server,
+    spawn_no_trailer_server, spawn_streaming_server, spawn_trailer_only_server,
+    spawn_unary_ok_server, spawn_wrong_content_type_server,
 };
 
 use bytes::Bytes;
@@ -199,6 +200,131 @@ async fn server_streaming_three_frames() {
         "expected payload bytes from 3 decoded gRPC frames, got {} bytes",
         total.len()
     );
+
+    server.shutdown();
+}
+
+// ── Test 4b: stream_ending_without_trailer_is_an_error ────────────────────────
+
+/// Regression test: a stream that sends data then ends WITHOUT ever sending a
+/// `grpc-status` trailer must surface as an error, not as a successful empty
+/// stream. Before the fix, `pump_response` silently closed the body channel
+/// in this case, which the caller would observe as `Ok` end-of-stream.
+#[tokio::test]
+async fn stream_ending_without_trailer_is_an_error() {
+    let payload = Bytes::from_static(b"\x08\x01");
+    let server = spawn_no_trailer_server(payload).await;
+    let channel = channel_for(server.addr).await;
+
+    let req = grpc_request(
+        &server.addr.to_string(),
+        "/test.Service/NoTrailer",
+        NativeBody::empty(),
+    );
+
+    // The initial HEADERS frame is a normal 200 response with no grpc-status,
+    // so `call()` itself must succeed — the failure only becomes observable
+    // once the body stream is consumed and no trailer ever arrives.
+    let resp = channel
+        .call(req)
+        .await
+        .expect("initial response headers must succeed (not trailers-only)");
+
+    let err = collect_body(resp.into_body())
+        .await
+        .expect_err("body stream ending without a grpc-status trailer must be an error");
+
+    match err {
+        OxiRpcError::Status(s) => {
+            assert_eq!(
+                s.code(),
+                tonic::Code::Unknown,
+                "expected UNKNOWN status for a missing grpc-status trailer, got {:?}",
+                s.code()
+            );
+        }
+        other => panic!("expected Status error, got {other:?}"),
+    }
+
+    server.shutdown();
+}
+
+// Note: a regression test that resets the h2 stream (RST_STREAM) after data
+// but before trailers -- to exercise the `recv_stream.trailers().await`
+// `Err(_)` arm fixed above -- was attempted here and dropped. The hand-rolled
+// server fixtures in `native_h2_server.rs` only drive the underlying h2
+// `Connection` (flushing queued frames) when the accept loop calls
+// `conn.accept()` again; nothing flushes HEADERS/DATA before an
+// immediately-following `send_reset`, so HEADERS, DATA, and RST_STREAM all
+// reach the client in one batch and race `response_future` itself (observed:
+// `call()` fails before reaching the body/trailers stage at all, instead of
+// after). Fixing that race requires restructuring the fixture to drive the
+// connection on a separate task, which risks the other passing fixtures in
+// that file; the fix above is covered by `stream_ending_without_trailer_is_an_error`
+// (the `Ok(None)` arm) and by code inspection for the `Err(_)` arm instead.
+
+// ── Test 4c: response with a non-gRPC content-type is rejected ───────────────
+
+/// Regression test: a response whose `content-type` is not a gRPC variant
+/// (e.g. `text/html`, as a reverse-proxy error page would send) must be
+/// surfaced as a clear transport error naming the actual content-type,
+/// rather than being fed into the frame decoder and producing a confusing
+/// "invalid gRPC frame" error.
+#[tokio::test]
+async fn unary_call_rejects_non_grpc_response_content_type() {
+    let server = spawn_wrong_content_type_server().await;
+    let channel = channel_for(server.addr).await;
+
+    let req = grpc_request(
+        &server.addr.to_string(),
+        "/test.Service/WrongContentType",
+        NativeBody::empty(),
+    );
+
+    let err = channel
+        .call(req)
+        .await
+        .expect_err("a text/html response must be rejected");
+
+    match err {
+        OxiRpcError::Transport(msg) => {
+            assert!(
+                msg.contains("text/html"),
+                "error message must name the actual content-type, got: {msg}"
+            );
+        }
+        other => panic!("expected Transport error, got {other:?}"),
+    }
+
+    server.shutdown();
+}
+
+/// Same as above, but the response carries no `content-type` header at all.
+#[tokio::test]
+async fn unary_call_rejects_missing_response_content_type() {
+    let server = spawn_missing_content_type_server().await;
+    let channel = channel_for(server.addr).await;
+
+    let req = grpc_request(
+        &server.addr.to_string(),
+        "/test.Service/MissingContentType",
+        NativeBody::empty(),
+    );
+
+    let err = channel
+        .call(req)
+        .await
+        .expect_err("a response with no content-type must be rejected");
+
+    match err {
+        OxiRpcError::Transport(msg) => {
+            assert!(
+                msg.contains("missing"),
+                "error message must explain the header is missing, got: {msg}"
+            );
+        }
+        other => panic!("expected Transport error, got {other:?}"),
+    }
 
     server.shutdown();
 }

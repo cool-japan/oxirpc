@@ -1,0 +1,5 @@
+# OxiRPC clippy configuration.
+#
+# msrv matches `workspace.package.rust-version` in the root Cargo.toml.
+# Keep these two values in sync.
+msrv = "1.89"

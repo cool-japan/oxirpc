@@ -34,7 +34,13 @@ pub mod tls_connector;
 pub use load_reporting::CallTelemetry;
 pub use metrics::RpcMetrics;
 pub use monitor::{ChannelMonitor, ConnectionState};
+#[cfg(feature = "http3")]
+pub use native_channel::{H3Channel, H3ChannelBuilder, H3Connection};
 pub use native_channel::{NativeBody, NativeChannel, NativeChannelBuilder};
+/// Re-export of the QUIC transport config type used by [`H3ChannelBuilder`]
+/// (requires `http3`).
+#[cfg(feature = "http3")]
+pub use oxiquic_transport::TransportConfig;
 pub use pool::{ChannelPool, TypedChannel};
 pub use xds::{XdsResolver, XdsWatcher};
 

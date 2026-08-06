@@ -140,6 +140,7 @@ async fn native_service_registry_accepts_oxi_named_service() {
 
     let req = Request::builder()
         .uri("/test.v1.CallRecorder/Ping")
+        .header("content-type", "application/grpc")
         .body(tonic::body::Body::default())
         .expect("request build");
     dispatch.call(req).await.expect("infallible call");

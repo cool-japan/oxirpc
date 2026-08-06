@@ -4,14 +4,27 @@ version = "0.1.0"
 edition = "2021"
 publish = false
 
+[package.metadata]
+cargo-fuzz = true
+
 [[bin]]
 name = "wire_frame"
 path = "fuzz_targets/wire_frame.rs"
 
+[[bin]]
+name = "grpc_web_frame"
+path = "fuzz_targets/grpc_web_frame.rs"
+
+[[bin]]
+name = "trailer_and_metadata"
+path = "fuzz_targets/trailer_and_metadata.rs"
+
 [dependencies]
 libfuzzer-sys = "0.4"
 oxirpc-core = { path = "../crates/oxirpc-core" }
+oxirpc-web = { path = "../crates/oxirpc-web" }
 bytes = "1"
+http = "1"
 tokio-util = { version = "0.7", features = ["codec"] }
 
 [workspace]

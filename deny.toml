@@ -1,11 +1,114 @@
+# cargo-deny configuration for OxiRPC.
+#
+# Run with: cargo deny check            (all sections)
+#           cargo deny check bans       (COOLJAPAN FFI/replacement bans)
+#           cargo deny check licenses
+#           cargo deny check sources
+#           cargo deny check advisories
+
+# ---------------------------------------------------------------------------
+# bans — COOLJAPAN Pure-Rust replacement policy.
+#
+# Crates in this list have a mandated COOLJAPAN Pure-Rust replacement; a
+# dependency edge onto one of them means either a policy violation slipped
+# in, or a third-party crate needs a `[patch]`/replacement upstream.
+# ---------------------------------------------------------------------------
 [bans]
+# tonic + hyper + h2 (and their respective transitive graphs) commonly pull
+# in more than one semver-incompatible version of small utility crates
+# (e.g. `base64`, `itertools`, `syn`). That is normal dependency-graph noise,
+# not a policy violation, so duplicates are reported rather than denied.
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+workspace-default-features = "allow"
+external-default-features = "allow"
+
 deny = [
-  { name = "flate2" },
-  { name = "protobuf-src" },
-  { name = "ring" },
-  { name = "aws-lc-rs" },
-  { name = "aws-lc-sys" },
-  { name = "openssl" },
-  { name = "openssl-sys" },
-  { name = "native-tls" },
+  # --- FFI / crypto backends banned from the Pure-Rust default closure ---
+  { name = "flate2", reason = "use oxiarc-deflate (Pure Rust gzip/deflate) instead" },
+  { name = "protobuf-src", reason = "protoc must never be spawned; use oxiproto-build/protox" },
+  # `ring` is pulled in transitively by `rcgen` (dev-only: self-signed test/
+  # bench/example certs). Per the workspace Cargo.toml comment on the `rcgen`
+  # entry, this is deliberate and does NOT appear on a `--edges normal` FFI
+  # audit edge; `wrappers` scopes the exception to exactly that path so any
+  # OTHER route to `ring` (e.g. a normal-edge dependency) still fails closed.
+  { name = "ring", reason = "use OxiTLS pure_provider() (rustls-rustcrypto backend) instead", wrappers = ["rcgen"] },
+  { name = "aws-lc-rs", reason = "banned from the default closure; only oxirpc-adapter-aws-lc may opt in" },
+  { name = "aws-lc-sys", reason = "banned from the default closure; only oxirpc-adapter-aws-lc may opt in" },
+  { name = "openssl", reason = "use OxiTLS instead" },
+  { name = "openssl-sys", reason = "use OxiTLS instead" },
+  { name = "native-tls", reason = "use OxiTLS instead" },
+
+  # --- COOLJAPAN ecosystem replacement table (compression / archive) ---
+  { name = "zip", reason = "use oxiarc-archive instead" },
+  { name = "zstd", reason = "use oxiarc-zstd instead" },
+  { name = "zstd-safe", reason = "use oxiarc-zstd instead" },
+  { name = "zstd-sys", reason = "use oxiarc-zstd instead" },
+  { name = "bzip2", reason = "use oxiarc-bzip2 instead" },
+  { name = "bzip2-sys", reason = "use oxiarc-bzip2 instead" },
+  { name = "lz4", reason = "use oxiarc-lz4 instead" },
+  { name = "lz4-sys", reason = "use oxiarc-lz4 instead" },
+  { name = "tar", reason = "use oxiarc-archive instead" },
+  { name = "snap", reason = "use oxiarc-snappy instead" },
+  { name = "brotli", reason = "use oxiarc-brotli instead" },
+  { name = "brotli-sys", reason = "use oxiarc-brotli instead" },
+  { name = "miniz_oxide", reason = "use oxiarc-deflate instead" },
+
+  # --- COOLJAPAN ecosystem replacement table (misc) ---
+  { name = "bincode", reason = "use oxicode instead" },
+  { name = "rustfft", reason = "use oxifft instead" },
+  { name = "quick-xml", reason = "use the oxixml-* family instead" },
+  { name = "openblas-src", reason = "use oxiblas instead" },
+  { name = "rusqlite", reason = "use oxisql-sqlite-compat instead" },
 ]
+
+# ---------------------------------------------------------------------------
+# advisories — RUSTSEC vulnerability / unmaintained / yanked checks.
+# ---------------------------------------------------------------------------
+[advisories]
+# Every entry here was confirmed via `cargo deny check advisories` to have
+# "No safe upgrade is available" at the time it was added — i.e. `cargo
+# update -p <crate>` cannot resolve it, and the fix (where one exists) is a
+# source migration, not a version bump. Two of the three originate in the
+# `oxitls` dependency chain (RustCrypto backend), outside this repo; the third
+# (`rustls-pemfile`) is a direct workspace dependency whose recommended fix
+# (migrate to `rustls-pki-types`'s `PemObject` trait) is a real code change,
+# tracked as a follow-up rather than done as part of this hygiene pass.
+ignore = [
+  { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained; pulled in transitively via oxitls-rustcrypto-provider -> oxitls-adapter-rustls-rustcrypto (upstream OxiTLS dependency, no safe upgrade published)" },
+  { id = "RUSTSEC-2023-0071", reason = "rsa 0.9.10 Marvin Attack timing side-channel; pulled in transitively via oxitls-adapter-rustls-rustcrypto (upstream OxiTLS dependency, no constant-time fix published upstream yet)" },
+  { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile is unmaintained (archived); direct workspace dependency. No safe version bump exists -- the fix is migrating call sites to rustls-pki-types's PemObject trait, tracked as a follow-up, not a hygiene-pass version pin" },
+]
+
+# ---------------------------------------------------------------------------
+# licenses — every license present in the dependency tree must be listed
+# here explicitly. Populated from `cargo deny check licenses` output; if a
+# new dependency introduces a license not in this list, add it deliberately
+# rather than widening the list speculatively.
+# ---------------------------------------------------------------------------
+[licenses]
+allow = [
+  "Apache-2.0",
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Zlib",
+  # webpki-roots >= 1.0 repackages Mozilla's CA bundle under this license.
+  "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.8
+
+[licenses.private]
+ignore = false
+
+# ---------------------------------------------------------------------------
+# sources — only crates.io; no unpinned git dependencies.
+# ---------------------------------------------------------------------------
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

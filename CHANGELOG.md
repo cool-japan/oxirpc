@@ -5,6 +5,145 @@ All notable changes to OxiRPC are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-08-07
+
+### Added
+
+- **HTTP/3 (gRPC-over-QUIC) support** behind the new opt-in `http3` feature —
+  100% Pure Rust via [OxiQUIC](https://github.com/cool-japan/oxiquic)
+  (`oxiquic-h3`, `oxiquic-transport`, `oxiquic-crypto`) and the hyperium `h3`
+  crate. The default feature closure remains QUIC-free (verified with
+  `cargo tree -p oxirpc --edges normal | grep oxiquic` → empty):
+  - `oxirpc-core`: `tls::{client_config_h3, server_config_h3, client_config_h3_arc,
+    server_config_h3_arc}` — TLS 1.3-only rustls configs with the `"h3"` ALPN,
+    built on `oxiquic_crypto::quic_crypto_provider()` (whose cipher suites carry
+    the `quic: Some(..)` key schedule required to derive QUIC packet keys).
+  - `oxirpc-client`: `native_channel::h3::{H3Channel, H3ChannelBuilder, H3Connection,
+    execute_h3}` — a pure-native gRPC-over-QUIC client channel. Full-duplex via
+    `RequestStream::split()`, strips the HTTP/2-only `te` header, detects
+    trailers-only responses, and maps `grpc-status` trailers to typed errors.
+  - `oxirpc-server`: `native_transport_h3::{serve_native_h3_with_service,
+    bind_h3_endpoint}` plus `ServerBuilder::{serve_native_registry_h3,
+    serve_native_registry_h3_with_endpoint}` — a QUIC accept loop that reuses the
+    `NativeServiceRegistry`, sends `grpc-status`/`grpc-message` response trailers,
+    enforces the `"h3"` ALPN, and supports graceful shutdown.
+  - `oxirpc` facade: new `http3` module re-exporting the above, `http3` added to
+    the `full` feature set, and a real loopback E2E suite (`tests/h3_e2e.rs`)
+    covering unary, server-streaming, client-streaming/bidi, deadline/timeout,
+    graceful shutdown, and ALPN-mismatch rejection.
+- **`SECURITY.md`** and **`CONTRIBUTING.md`** added to the repository root.
+- **gRPC `Content-Type` validation** on the native transport paths
+  (`oxirpc-client/src/native_channel/content_type.rs`, new): the native H2
+  client, the native H3 client, and the native server dispatch path
+  (`oxirpc-server/src/native_registry/dispatch.rs`) now reject requests/responses
+  whose `content-type` is not a gRPC variant (`application/grpc`,
+  `application/grpc+proto`, `application/grpc+json`) instead of feeding
+  arbitrary bytes (e.g. a reverse-proxy HTML error page) into the gRPC frame
+  decoder. The server responds `415 Unsupported Media Type`; the client
+  surfaces a clear `OxiRpcError::Transport` naming the actual content-type.
+- `rustfmt.toml` and `clippy.toml` added at the workspace root (`clippy.toml`
+  pins `msrv = "1.89"` to match `workspace.package.rust-version`).
+- `deny.toml` extended with the full COOLJAPAN Pure-Rust replacement ban list
+  (`bincode`→`oxicode`, `rustfft`→`oxifft`, `quick-xml`→`oxixml-*`,
+  `zip`/`zstd`/`bzip2`/`lz4`/`tar`/`snap`/`brotli`/`miniz_oxide`→`oxiarc-*`,
+  `openblas-src`→`oxiblas`, `rusqlite`→`oxisql-sqlite-compat`) plus
+  `[advisories]`, `[licenses]`, and `[sources]` sections; all four `cargo deny
+  check` categories pass.
+- New examples under `crates/oxirpc/examples/`: a native H2 client+server
+  round trip (`client_server_native.rs`) and, behind `http3`, a client+server
+  round trip driven entirely through the `oxirpc::http3` facade module
+  (`http3_client_server.rs`) — the README's HTTP/3 snippet is now backed by a
+  compiled, runnable example rather than only the lower-level `h3_e2e.rs`
+  test suite.
+- New fuzz targets under `fuzz/fuzz_targets/`: `grpc_web_frame` (the
+  gRPC-Web `StreamSequencer` length-prefixed frame parser) and
+  `trailer_and_metadata` (gRPC status-trailer percent-decoding and
+  `-bin`/base64 metadata decoding), alongside the existing `wire_frame` target.
+  `fuzz/Cargo.toml` also gained the `[package.metadata] cargo-fuzz = true`
+  marker required by current `cargo-fuzz` to recognise the crate at all; all
+  three targets were smoke-run for 20k iterations each with no crash.
+
+### Known issues
+
+- **Suspected `H3Channel`/`H3Connection` staleness after an idle gap**: an
+  `h3-vs-h2` benchmark was attempted (`crates/oxirpc/benches/`) and dropped
+  after reproducing, deterministically, `channel.ready().await` succeeding
+  and a *later*, separate `channel.call(..)` on the same `H3Channel` failing
+  with `Transport("h3 stream: failed to open bidi stream: connection error:
+  driven connection driver closed before stream was opened")` — even with
+  `TransportConfig::idle_timeout` raised to 300s, ruling out QUIC idle
+  timeout as the cause. Every `tests/h3_e2e.rs` case chains connection
+  establishment directly into its first stream-open (no separate `.ready()`
+  call, no scheduling gap in between), which may explain why the E2E suite
+  has never caught this — but that connection is circumstantial, not
+  confirmed. Not investigated further (out of scope for this hygiene pass);
+  flagged here for the functional-bug backlog. The originally-suspected lead
+  has since been **ruled out**: `H3Connection::connect`
+  (`oxirpc-client/src/native_channel/h3/connection.rs`) does not store its
+  local `ClientEndpoint` in the returned `Self`, but `ClientEndpoint` holds
+  its UDP socket as `Arc<UdpSocket>` (`oxiquic-transport`'s
+  `endpoint::mod.rs`) and `connect()` clones that `Arc` into the spawned
+  `ConnectionDriver` — so the driver task keeps the socket alive independently
+  of the endpoint, and dropping the endpoint after `connect()` returns cannot
+  be the cause. Root cause remains open — it has not been localized to either
+  `oxirpc`'s own `H3Channel` connection-caching logic
+  (`native_channel/h3/channel.rs`) or to `oxiquic` itself; if it does turn out
+  to live in `oxiquic`, a fix there is out of scope for this repo.
+
+### Changed
+
+- **`Cargo.lock` re-resolved** against the current manifests (no manifest
+  version pins changed): the lockfile previously predated the "bump oxiproto"
+  / "bump oxiarc" commits and resolved versions (e.g. `oxiproto` 0.1.3,
+  `oxiarc-deflate` 0.3.6, `oxitls`/`oxitls-rcgen` 0.2.0) that no longer
+  satisfied the manifests' own requirements. `crossbeam-epoch` and `spin`
+  were additionally updated to their latest compatible versions to clear
+  RUSTSEC-2026-0204 and a yanked-version warning respectively (both dev-only,
+  transitive via `criterion`/`protox`).
+- **Sibling COOLJAPAN manifest dependencies bumped** to their latest published
+  releases (net change since the `0.2.0` release tag):
+  - `oxiproto` / `oxiproto-reflect` / `oxiproto-build` / `oxiproto-core`: `0.1.3` →
+    `0.1.5` (via an intermediate `0.1.4` hop).
+  - `oxiarc-deflate` / `oxiarc-zstd`: `0.3.3` → `0.4.1` (via `0.3.4`, `0.3.5`, `0.3.6`,
+    `0.4.0`).
+  - `oxitls`: `0.2.0` → `0.3.0` (via an intermediate `0.2.1` hop, landed alongside the
+    `http3` feature work below). `oxitls-rcgen` (dev-only, self-signed cert generation
+    for H3 tests/examples) was introduced at `0.2.1` and bumped the same way to `0.3.0`.
+    Informational: the previously-published `oxitls 0.2.0` floor resolved a
+    `rustls-webpki` 0.102.x edge affected by **RUSTSEC-2026-0104** (a CRL-parsing panic),
+    fixed upstream at `oxitls 0.2.1` (see oxitls's own `CHANGELOG.md` `[0.2.1]`); this
+    bump past that floor to `^0.3.0` clears the advisory path for `oxirpc` once this
+    release publishes.
+  - `oxiquic-h3` / `oxiquic-transport` / `oxiquic-crypto`: introduced at `0.2.0` (new,
+    for the `http3` feature — see Added above) and bumped to `0.2.1`.
+
+### Fixed
+
+- **Missing `grpc-status` trailer no longer looks like a successful empty
+  stream** (`oxirpc-client/src/native_channel/call.rs`,
+  `native_channel/h3/call.rs`): `pump_response` now takes the initial HTTP
+  response status and, if the stream ends without ever sending a
+  `grpc-status` trailer, surfaces `OxiRpcError::from_status_code(StatusCode::Unknown,
+  ..)` (naming the initial HTTP status when it was itself non-2xx) instead of
+  closing the body channel as if the RPC had completed successfully. Fixed
+  identically on both the native H2 and native H3 response pumps.
+- **`decode_grpc_message` / `decode_grpc_message_with_encoding` frame-size
+  overflow guard** (`oxirpc-core/src/wire/server.rs`): an attacker-controlled
+  32-bit length prefix is now bounds-checked against `MAX_FRAME_SIZE_DEFAULT`
+  and added via `checked_add` *before* any arithmetic on it, closing a
+  usize-overflow / out-of-bounds-slice panic that was reachable on 32-bit and
+  `wasm32` targets.
+- **Trailer-read transport errors were coerced to "no trailers"**
+  (`native_channel/call.rs`, `native_channel/h3/call.rs`): a genuine h2/h3
+  error while reading the trailers block (e.g. `RST_STREAM` mid-response) is
+  now mapped through `h2_error_to_oxirpc` / `h3_stream_error_to_oxirpc` and
+  surfaced as the real transport error, rather than being flattened by
+  `.unwrap_or(None)` into the generic "stream ended without a grpc-status
+  trailer" message used for a clean close with no trailers frame at all. The
+  two cases were previously byte-identical to callers.
+
+### Removed
+
 ## [0.2.0] - 2026-06-22
 
 ### Removed

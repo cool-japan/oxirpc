@@ -222,6 +222,9 @@ pub fn encode_frame(payload: &[u8], compressed: bool) -> Result<Bytes, WireError
 ///
 /// - [`WireError::FrameTooShort`] — fewer bytes than the 5-byte header.
 /// - [`WireError::UnknownFlag`] — flag byte is not 0x00 or 0x01.
+/// - [`WireError::FrameTooLarge`] — claimed payload length exceeds
+///   [`MAX_FRAME_SIZE_DEFAULT`] (also covers the arithmetic-overflow case on
+///   32-bit/wasm32 targets, since the size guard runs first).
 /// - [`WireError::FrameTooShort`] — claimed payload length exceeds `data.len()`.
 pub fn decode_frame(data: &[u8]) -> Result<(Frame, usize), WireError> {
     if data.len() < GRPC_FRAME_HEADER_LEN {
@@ -238,7 +241,24 @@ pub fn decode_frame(data: &[u8]) -> Result<(Frame, usize), WireError> {
     };
 
     let payload_len = u32::from_be_bytes([data[1], data[2], data[3], data[4]]) as usize;
-    let total = GRPC_FRAME_HEADER_LEN + payload_len;
+    // DoS / overflow guard: reject frames claiming more than the configured maximum
+    // BEFORE doing any arithmetic on the attacker-controlled length. This must run
+    // before `GRPC_FRAME_HEADER_LEN + payload_len` — on a 32-bit or wasm32 target
+    // `usize` is only 32 bits wide, so a maliciously large `payload_len` (up to
+    // `u32::MAX`) could otherwise overflow the addition and yield a `total` smaller
+    // than `GRPC_FRAME_HEADER_LEN`, which would then panic when slicing below.
+    if payload_len > MAX_FRAME_SIZE_DEFAULT {
+        return Err(WireError::FrameTooLarge {
+            max: MAX_FRAME_SIZE_DEFAULT,
+            got: payload_len,
+        });
+    }
+    let total = GRPC_FRAME_HEADER_LEN
+        .checked_add(payload_len)
+        .ok_or(WireError::FrameTooLarge {
+            max: MAX_FRAME_SIZE_DEFAULT,
+            got: payload_len,
+        })?;
 
     if data.len() < total {
         return Err(WireError::FrameTooShort {
@@ -399,6 +419,44 @@ mod tests {
         let mut dec = make_decoder(max);
         let err = dec.decode(&mut buf).unwrap_err();
         assert!(matches!(err, WireError::FrameTooLarge { .. }));
+    }
+
+    /// Build a raw gRPC frame header (flag + big-endian u32 length) with no
+    /// payload bytes following it — simulates an attacker sending only the
+    /// 5-byte header with a claimed length that is never backed by data.
+    fn header_only(payload_len: u32) -> Vec<u8> {
+        let mut buf = BytesMut::with_capacity(GRPC_FRAME_HEADER_LEN);
+        buf.put_u8(FLAG_UNCOMPRESSED);
+        buf.put_u32(payload_len);
+        buf.to_vec()
+    }
+
+    #[test]
+    fn decode_frame_rejects_oversized_length_without_panic() {
+        // Claimed length is one byte over the configured maximum. Regression
+        // guard: this must be rejected via the size check, not by computing
+        // `GRPC_FRAME_HEADER_LEN + payload_len` and slicing on it.
+        let data = header_only((MAX_FRAME_SIZE_DEFAULT + 1) as u32);
+        let err = decode_frame(&data).unwrap_err();
+        assert!(
+            matches!(err, WireError::FrameTooLarge { .. }),
+            "expected WireError::FrameTooLarge, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn decode_frame_rejects_u32_max_length_without_panic() {
+        // A maximal u32 length prefix (~4 GiB). On a 32-bit or wasm32 target,
+        // `GRPC_FRAME_HEADER_LEN + payload_len` would overflow `usize` here if
+        // computed without a prior size guard, producing a wrapped `total`
+        // smaller than `GRPC_FRAME_HEADER_LEN` and panicking on the subsequent
+        // slice. The size guard must reject this before any such arithmetic.
+        let data = header_only(u32::MAX);
+        let err = decode_frame(&data).unwrap_err();
+        assert!(
+            matches!(err, WireError::FrameTooLarge { .. }),
+            "expected WireError::FrameTooLarge, got {err:?}"
+        );
     }
 
     #[test]
