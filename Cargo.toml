@@ -70,9 +70,9 @@ oxiproto-build   = { version = "0.1.5", default-features = false }
 oxiproto-core    = { version = "0.1.5" }
 
 # compression (M5/7a) — Pure Rust gzip via OxiArc Deflate; no flate2, no zstd
-oxiarc-deflate = { version = "0.4.1" }
+oxiarc-deflate = { version = "0.4.2" }
 # compression (zstd) — Pure Rust Zstandard via OxiArc; no zstd C crate
-oxiarc-zstd    = { version = "0.4.1" }
+oxiarc-zstd    = { version = "0.4.2" }
 
 # TLS (M2) — Pure Rust via OxiTLS + rustls-rustcrypto; no ring, no aws-lc-rs, no native-tls
 oxitls         = { version = "0.3.0", default-features = false, features = ["pure"] }
